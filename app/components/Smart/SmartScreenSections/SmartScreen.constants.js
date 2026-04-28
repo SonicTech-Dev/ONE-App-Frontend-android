@@ -321,8 +321,8 @@ export const INITIAL_DEVICE_CATEGORIES = [
             commandPair: { on: 'turn_on', off: 'turn_off' }
           },
           wan: {
-            device_id: 'd8e2ae118be4c4dba8f41f2aaad1a0cce',
-            ability_id: 'ef9c7d205c6994fe2abe9693b9b7d998a',
+            device_id: 'd03c4d30bc40a4a4a93d8b248a49d2818',
+            ability_id: 'ecf00a15480654e84998a6055cbd8318a',
             commandPair: { on: 'turn_on', off: 'turn_off' }
           }},
           { title: 'Curtain-LivingRoom', location: 'Living Room', status: 'Off', color: '#4ac0ff', isOn: false, iconName: 'curtains' , library: 'MaterialCommunityIcons',

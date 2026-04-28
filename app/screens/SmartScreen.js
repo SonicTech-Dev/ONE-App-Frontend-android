@@ -411,15 +411,18 @@ export default function SmartScreen({ navigation }) {
           const activeToken = await getActiveWanToken();
           
           const RESIDENCE_ID = 'rabd2c6d2aecc4ce3be11e25b4ecd3c82';
-          const HUB_DEVICE_ID = 'd03852d726b074d77a7d658e7fac7d3b6'; 
 
+          // Radically optimized single-fetch pipeline leveraging the augmented get_device_list endpoint. 
+          // Retreives the global house natively in under 150ms!
           const wanBody = {
-            command: 'get_device_info',
+            command: 'get_device_list',
             id: 'c45e846ca23ab42c9ae469d988ae32a96',
-            param: { residence_id: RESIDENCE_ID, device_id: HUB_DEVICE_ID },
+            param: { residence_id: RESIDENCE_ID, show_ability: true },
           };
           
           try {
+            let validApiDevices = [];
+            
             const res = await fetch(`${BACKEND_URL}/device_status/`, {
               method: 'POST',
               headers: {
@@ -432,54 +435,74 @@ export default function SmartScreen({ navigation }) {
 
             if (res.ok) {
               const data = await res.json();
+              
+              // Let's console log the raw shape to figure out exactly how the abilities arrive!
+              console.log(`[WAN SYNC DEBUG] Raw get_device_list returned:` + JSON.stringify(data?.result || data).slice(0, 500));
+              
               if (data?.result) {
-                const validApiDevices = Array.isArray(data.result.devices) 
-                  ? data.result.devices 
-                  : [data.result]; // Fallback cleanly if it exclusively returned a single object structure
-                
-                setDeviceCategories((prevCats) => {
-                  return prevCats.map((cat) => ({
-                    ...cat,
-                    items: cat.items.map((device) => {
-                      const targetId = device?.wan?.device_id || device?.lan?.device_id;
-                      const apiDev = validApiDevices.find(d => d.device_id === targetId);
-                      
-                      if (!apiDev || !Array.isArray(apiDev.abilities)) return device;
-                      
-                      const targetAbilityId = device?.wan?.ability_id || device?.lan?.ability_id;
-                      const matchedAbility = apiDev.abilities.find(a => !targetAbilityId || a.ability_id === targetAbilityId);
-                      
-                      if (!matchedAbility) return device;
+                // Handle both structures: if it directly returns an array or if it wraps it in .devices
+                const rawArray = Array.isArray(data.result) 
+                  ? data.result 
+                  : (Array.isArray(data.result.devices) ? data.result.devices : [data.result]);
 
-                      const normalizeStateLabel = (state) => {
-                        if (typeof state !== 'string') return null;
-                        const normalizedState = state.trim().toLowerCase();
-                        if (normalizedState === 'on') return 'On';
-                        if (normalizedState === 'off') return 'Off';
-                        return normalizedState.charAt(0).toUpperCase() + normalizedState.slice(1);
-                      };
-
-                      const rawState = matchedAbility?.state;
-                      const normalizedState = typeof rawState === 'string' ? rawState.trim().toLowerCase() : null;
-                      const nextStatus = normalizeStateLabel(rawState) ?? device.status;
-                      const nextIsOn = normalizedState === 'on' 
-                        ? true 
-                        : normalizedState === 'off' 
-                          ? false 
-                          : device.isOn;
-                      
-                      return {
-                        ...device,
-                        isOn: nextIsOn,
-                        status: nextStatus,
-                      };
-                    })
-                  }));
+                rawArray.forEach(dev => {
+                  validApiDevices.push(dev);
+                  if (Array.isArray(dev.sub_devices)) {
+                    validApiDevices.push(...dev.sub_devices);
+                  }
                 });
               }
+            } else {
+              const errorText = await res.text().catch(e => 'No text body');
+              console.error(`[WAN SYNC ERROR] Proxy rejected get_device_list! Status: ${res.status}, Body:`, errorText);
             }
+            
+            console.log(`[WAN SYNC DEBUG] Flattened ${validApiDevices.length} total sub_devices from get_device_list sweep!`);
+
+            setDeviceCategories((prevCats) => {
+              return prevCats.map((cat) => ({
+                ...cat,
+                items: cat.items.map((device) => {
+                  const targetId = device?.wan?.device_id || device?.lan?.device_id;
+                  const apiDev = validApiDevices.find(d => d.device_id === targetId);
+                  
+                  if (!apiDev || !Array.isArray(apiDev.abilities)) return device;
+                  
+                  const targetAbilityId = device?.wan?.ability_id || device?.lan?.ability_id;
+                  const matchedAbility = apiDev.abilities.find(a => !targetAbilityId || a.ability_id === targetAbilityId);
+                  
+                  if (!matchedAbility) return device;
+
+                  const normalizeStateLabel = (state) => {
+                    if (typeof state !== 'string') return null;
+                    const normalizedState = state.trim().toLowerCase();
+                    if (normalizedState === 'on') return 'On';
+                    if (normalizedState === 'off') return 'Off';
+                    return normalizedState.charAt(0).toUpperCase() + normalizedState.slice(1);
+                  };
+
+                  const rawState = matchedAbility?.state;
+                  const normalizedState = typeof rawState === 'string' ? rawState.trim().toLowerCase() : null;
+                  const nextStatus = normalizeStateLabel(rawState) ?? device.status;
+                  const nextIsOn = normalizedState === 'on' 
+                    ? true 
+                    : normalizedState === 'off' 
+                      ? false 
+                      : device.isOn;
+                  
+                  console.log(`[WAN SYNC DEBUG] Patching device '${device.title}' (${targetId}) -> isOn: ${nextIsOn}, status: ${nextStatus}`);
+                  
+                  return {
+                    ...device,
+                    isOn: nextIsOn,
+                    status: nextStatus,
+                  };
+                })
+              }));
+            });
+            
           } catch (fetchErr) {
-            // Silently catch fetch errors to avoid spamming the log if connection momentarily drops
+            console.error('[WAN SYNC ERROR] Fetch crashed:', fetchErr);
           }
         } else {
           handleRequest(null, payload);

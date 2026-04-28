@@ -58,7 +58,7 @@ export default function DeviceListOnlineStatus({
       const wanBody = {
         command: 'get_device_list',
         id: requestId,
-        param: { residence_id: residenceId },
+        param: { residence_id: residenceId, show_ability: true },
       };
 
       try {
@@ -170,13 +170,18 @@ export default function DeviceListOnlineStatus({
 }
 
 /**
- * WAN summary: { result: [ { device_id, online, ... }, ... ] }
+ * WAN summary: { result: [ { device_id, online, ... }, ... ] } or { result: { devices: [ ... ] } }
  */
 function buildWanStatusMap(json) {
   const map = {};
-  if (!json || !Array.isArray(json.result)) return map;
+  if (!json || !json.result) return map;
 
-  for (const device of json.result) {
+  // Accurately intercept the new augmented return structures!
+  const rawArray = Array.isArray(json.result) 
+    ? json.result 
+    : (Array.isArray(json.result.devices) ? json.result.devices : [json.result]);
+
+  for (const device of rawArray) {
     if (!device) continue;
     if (device.device_id) {
       map[device.device_id] = !!device.online;
