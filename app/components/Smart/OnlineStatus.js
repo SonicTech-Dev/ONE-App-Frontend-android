@@ -20,7 +20,7 @@ const StatusText = styled.Text`
 export default function OnlineStatus({
   selectedOption = 'LAN',
   pollingInterval = 30000,
-  wanBackendUrl = 'https://one-development.soniciot.com/online_status/',
+  wanBackendUrl = 'https://one-development.soniciot.com/device_status/',
   lanUrl = 'http://192.168.2.115/api/v1.0/device',
   requestId = 'c45e846ca23ab42c9ae469d988ae32a96',
   //oniste - deviceId = 'd4f54a92bea2a440c8a6a23d0b636dcf7',
@@ -46,9 +46,9 @@ export default function OnlineStatus({
         param: { device_id: deviceId },
       };
       const wanBody = {
-        command: 'get_device_info',
+        command: 'get_device_list',
         id: requestId,
-        param: { residence_id: residenceId, device_id: deviceId },
+        param: { residence_id: residenceId, show_ability: true },
       };
 
       try {
@@ -76,7 +76,7 @@ export default function OnlineStatus({
             return;
           }
           const json = await res.json();
-          const onlineFlag = json && json.result && typeof json.result.online === 'boolean' ? json.result.online : null;
+          const onlineFlag = extractDeviceOnlineFromWanList(json, deviceId);
           if (mounted) setIsOnline(onlineFlag === null ? false : onlineFlag);
           return;
         }
@@ -179,4 +179,31 @@ export default function OnlineStatus({
       <StatusText isOnline={!!isOnline}>{isOnline ? 'Online' : 'Offline'}</StatusText>
     </View>
   );
+}
+
+function extractDeviceOnlineFromWanList(json, targetDeviceId) {
+  if (!json || !json.result || !targetDeviceId) return null;
+
+  const devices = Array.isArray(json.result)
+    ? json.result
+    : (Array.isArray(json.result.devices) ? json.result.devices : [json.result]);
+
+  for (const device of devices) {
+    if (!device) continue;
+
+    if (device.device_id === targetDeviceId && typeof device.online === 'boolean') {
+      return device.online;
+    }
+
+    if (Array.isArray(device.sub_devices)) {
+      for (const sub of device.sub_devices) {
+        if (!sub) continue;
+        if (sub.device_id === targetDeviceId && typeof sub.online === 'boolean') {
+          return sub.online;
+        }
+      }
+    }
+  }
+
+  return null;
 }

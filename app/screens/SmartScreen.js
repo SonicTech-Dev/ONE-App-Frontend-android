@@ -437,8 +437,7 @@ export default function SmartScreen({ navigation }) {
               const data = await res.json();
               
               // Let's console log the raw shape to figure out exactly how the abilities arrive!
-              console.log(`[WAN SYNC DEBUG] Raw get_device_list returned:` + JSON.stringify(data?.result || data).slice(0, 500));
-              
+        
               if (data?.result) {
                 // Handle both structures: if it directly returns an array or if it wraps it in .devices
                 const rawArray = Array.isArray(data.result) 
@@ -457,8 +456,7 @@ export default function SmartScreen({ navigation }) {
               console.error(`[WAN SYNC ERROR] Proxy rejected get_device_list! Status: ${res.status}, Body:`, errorText);
             }
             
-            console.log(`[WAN SYNC DEBUG] Flattened ${validApiDevices.length} total sub_devices from get_device_list sweep!`);
-
+          
             setDeviceCategories((prevCats) => {
               return prevCats.map((cat) => ({
                 ...cat,
@@ -490,7 +488,7 @@ export default function SmartScreen({ navigation }) {
                       ? false 
                       : device.isOn;
                   
-                  console.log(`[WAN SYNC DEBUG] Patching device '${device.title}' (${targetId}) -> isOn: ${nextIsOn}, status: ${nextStatus}`);
+                
                   
                   return {
                     ...device,
