@@ -183,17 +183,29 @@ function buildWanStatusMap(json) {
 
   for (const device of rawArray) {
     if (!device) continue;
+    const normalizedName = normalizeDeviceName(device.device_name || device.product_name);
     if (device.device_id) {
       map[device.device_id] = !!device.online;
+    }
+    if (normalizedName) {
+      map[`name:${normalizedName}`] = !!device.online;
     }
     if (Array.isArray(device.sub_devices)) {
       for (const sub of device.sub_devices) {
         if (!sub || !sub.device_id) continue;
         map[sub.device_id] = !!sub.online;
+        const normalizedSubName = normalizeDeviceName(sub.device_name || sub.product_name);
+        if (normalizedSubName) {
+          map[`name:${normalizedSubName}`] = !!sub.online;
+        }
       }
     }
   }
   return map;
+}
+
+function normalizeDeviceName(name) {
+  return String(name || '').trim().toLowerCase();
 }
 
 /**

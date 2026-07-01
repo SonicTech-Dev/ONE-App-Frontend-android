@@ -43,8 +43,15 @@ const DeviceStatuses = () => {
                     ? device?.wan?.device_id
                     : device?.lan?.device_id;
 
-                const hasStatus = typeof statusMap[deviceId] === 'boolean';
-                const isOnline = hasStatus ? statusMap[deviceId] : false;
+                const titleKey = `name:${String(device?.title || '').trim().toLowerCase()}`;
+                const hasIdStatus = typeof statusMap[deviceId] === 'boolean';
+                const hasTitleStatus = typeof statusMap[titleKey] === 'boolean';
+                const hasStatus = hasIdStatus || hasTitleStatus;
+                const isOnline = hasIdStatus
+                  ? statusMap[deviceId]
+                  : hasTitleStatus
+                    ? statusMap[titleKey]
+                    : false;
                 const isLast = deviceIndex === category.items.length - 1;
 
                 return (

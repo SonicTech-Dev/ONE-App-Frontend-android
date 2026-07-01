@@ -144,6 +144,9 @@ async function requestPermissionsIfNeeded() {
 // IPv4 validation
 const ipv4Regex = /^(25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)){3}$/;
 
+// Ignore self-originated callback echoes for a short window after in-app controls.
+const SELF_CALLBACK_SUPPRESS_MS = 2200;
+
 export default function SmartScreen({ navigation }) {
   const { getActiveLanToken, getActiveWanToken, networkMode } = useAuth();
   
@@ -176,6 +179,37 @@ export default function SmartScreen({ navigation }) {
   // Ref so the onSipRegStatus event handler can read selectedOption without re-subscribing.
   const selectedOptionRef = useRef(selectedOption);
   useEffect(() => { selectedOptionRef.current = selectedOption; }, [selectedOption]);
+
+  // Tracks local controls to suppress callback-echo updates.
+  const selfControlSuppressRef = useRef(new Map());
+
+  const makeSuppressKey = useCallback((mode, id, ability) => {
+    return `${mode}:${String(id || '')}:${String(ability || '')}`;
+  }, []);
+
+  const markSelfControl = useCallback((mode, id, ability) => {
+    if (!mode || !id) return;
+    const now = Date.now();
+    const store = selfControlSuppressRef.current;
+    for (const [key, expiresAt] of store.entries()) {
+      if (expiresAt <= now) store.delete(key);
+    }
+    store.set(makeSuppressKey(mode, id, ability), now + SELF_CALLBACK_SUPPRESS_MS);
+    store.set(makeSuppressKey(mode, id, ''), now + SELF_CALLBACK_SUPPRESS_MS);
+  }, [makeSuppressKey]);
+
+  const shouldSuppressSelfCallback = useCallback((mode, id, ability) => {
+    if (!mode || !id) return false;
+    const now = Date.now();
+    const store = selfControlSuppressRef.current;
+    for (const [key, expiresAt] of store.entries()) {
+      if (expiresAt <= now) store.delete(key);
+    }
+
+    const exactKey = makeSuppressKey(mode, id, ability);
+    const genericKey = makeSuppressKey(mode, id, '');
+    return (store.get(exactKey) || 0) > now || (store.get(genericKey) || 0) > now;
+  }, [makeSuppressKey]);
 
   useEffect(() => {
     console.log('[SmartScreen] selectedOption:', selectedOption);
@@ -352,6 +386,7 @@ export default function SmartScreen({ navigation }) {
       payload?.data?.payload?.device_id &&
       Array.isArray(payload?.data?.payload?.abilities)
     ) {
+      const mode = selectedOptionRef.current?.toLowerCase() === 'wan' ? 'wan' : 'lan';
       const deviceId = payload.data.payload.device_id;
       const abilities = payload.data.payload.abilities;
 
@@ -359,15 +394,20 @@ export default function SmartScreen({ navigation }) {
         return prevCats.map((cat) => ({
           ...cat,
           items: cat.items.map((device) => {
+            const channel = device?.[mode];
             const matchedAbility = abilities.find((ability) => {
               const callbackAbilityId = ability?.ability_id;
               return (
-                device?.lan?.device_id === deviceId &&
-                (!callbackAbilityId || device?.lan?.ability_id === callbackAbilityId)
+                channel?.device_id === deviceId &&
+                (!callbackAbilityId || channel?.ability_id === callbackAbilityId)
               );
             });
 
             if (!matchedAbility) {
+              return device;
+            }
+
+            if (shouldSuppressSelfCallback(mode, deviceId, matchedAbility?.ability_id)) {
               return device;
             }
 
@@ -389,7 +429,7 @@ export default function SmartScreen({ navigation }) {
         }));
       });
     }
-  }, []);
+  }, [shouldSuppressSelfCallback]);
 
   // Connect to the backend WebSocket for WAN callbacks
   useEffect(() => {
@@ -461,15 +501,16 @@ export default function SmartScreen({ navigation }) {
               return prevCats.map((cat) => ({
                 ...cat,
                 items: cat.items.map((device) => {
-                  const targetId = device?.wan?.device_id || device?.lan?.device_id;
+                  const targetId = device?.wan?.device_id;
                   const apiDev = validApiDevices.find(d => d.device_id === targetId);
                   
                   if (!apiDev || !Array.isArray(apiDev.abilities)) return device;
                   
-                  const targetAbilityId = device?.wan?.ability_id || device?.lan?.ability_id;
+                  const targetAbilityId = device?.wan?.ability_id;
                   const matchedAbility = apiDev.abilities.find(a => !targetAbilityId || a.ability_id === targetAbilityId);
                   
                   if (!matchedAbility) return device;
+                  if (shouldSuppressSelfCallback('wan', targetId, targetAbilityId)) return device;
 
                   const normalizeStateLabel = (state) => {
                     if (typeof state !== 'string') return null;
@@ -559,7 +600,10 @@ export default function SmartScreen({ navigation }) {
       }
       (async () => {
         const headers = await getHeaders();
-        deviceStatus(dev.device_id, selectedOption, setSelectedDeviceStatus, headers);
+        deviceStatus(dev.device_id, selectedOption, setSelectedDeviceStatus, headers, {
+          deviceTitle: selectedDevice?.title,
+          abilityId: dev?.ability_id,
+        });
       })();
     } else {
       setSelectedDeviceStatus(null);
@@ -586,8 +630,12 @@ export default function SmartScreen({ navigation }) {
     );
     const command = dev.commandPair[newControl];
     const headers = await getHeaders();
+    markSelfControl(mode, dev.device_id, dev.ability_id);
     controlDevice(dev.device_id, dev.ability_id, command, null, selectedOption, headers);
-    deviceStatus(dev.device_id, selectedOption, setSelectedDeviceStatus, headers);
+    deviceStatus(dev.device_id, selectedOption, setSelectedDeviceStatus, headers, {
+      deviceTitle: device?.title,
+      abilityId: dev?.ability_id,
+    });
   };
 
   const handleSetPosition = async (device, position) => {
@@ -602,6 +650,7 @@ export default function SmartScreen({ navigation }) {
       ? { position }
       : { position_percent: position };
     const headers = await getHeaders();
+    markSelfControl(mode, dev.device_id, dev.ability_id);
     controlDevice(dev.device_id, dev.ability_id, command, attribute, selectedOption, headers);
   };
 
@@ -617,6 +666,7 @@ export default function SmartScreen({ navigation }) {
       : { preset_temperature: temperature };
     const command = dev.commandPair['on'];
     const headers = await getHeaders();
+    markSelfControl(mode, dev.device_id, dev.ability_id);
     controlDevice(dev.device_id, dev.ability_id, command, attribute, selectedOption, headers);
   };
 
@@ -632,6 +682,7 @@ export default function SmartScreen({ navigation }) {
       : { hvac_mode: HVACmode };
     const command = dev.commandPair['on'];
     const headers = await getHeaders();
+    markSelfControl(mode, dev.device_id, dev.ability_id);
     controlDevice(dev.device_id, dev.ability_id, command, attribute, selectedOption, headers);
   };
 
@@ -646,6 +697,7 @@ export default function SmartScreen({ navigation }) {
       ? { target_temperature: temperature }
       : { fan_mode: speed };
     const command = dev.commandPair['on'];
+    markSelfControl(mode, dev.device_id, dev.ability_id);
     const headers = await getHeaders();
     controlDevice(dev.device_id, dev.ability_id, command, attribute, selectedOption, headers);
   };
@@ -660,6 +712,7 @@ export default function SmartScreen({ navigation }) {
     const attribute = mode === 'lan'
       ? { brightness_pct: Brightness }
       : { brightness: Brightness };
+    markSelfControl(mode, dev.device_id, dev.ability_id);
     const command = dev.commandPair['on'];
     const headers = await getHeaders();
     controlDevice(dev.device_id, dev.ability_id, command, attribute, selectedOption, headers);
