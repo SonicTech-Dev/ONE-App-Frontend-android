@@ -14,6 +14,7 @@ function normalizeMode(mode, fallbackMode) {
 export default function SmartLockScreen({ route, navigation }) {
   const { networkMode } = useAuth();
   const selectedOption = normalizeMode(route?.params?.selectedOption, networkMode);
+  const selectedMockup = route?.params?.selectedMockup || 'mockup2';
 
   const navigateWithinSmartStack = (screenName, params) => {
     const state = navigation?.getState?.();
@@ -34,6 +35,7 @@ export default function SmartLockScreen({ route, navigation }) {
   const goToSL50 = () => {
     navigateWithinSmartStack('SL50LockScreen', {
       selectedOption,
+      selectedMockup,
       wanRtspUrl: route?.params?.wanRtspUrl,
       wanCiphertext: route?.params?.wanCiphertext,
     });

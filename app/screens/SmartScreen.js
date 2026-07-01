@@ -8,7 +8,10 @@ import Screen from '../components/Screen';
 import useColors from '../hooks/useColors';
 import DevicModal from '../components/Modal';
 import CallbackServer from '../components/Services/Server';
-import { INITIAL_DEVICE_CATEGORIES } from '../components/Smart/SmartScreenSections/SmartScreen.constants';
+import {
+  MOCKUP_OPTIONS,
+  getDeviceCategoriesByMockup,
+} from '../components/Smart/SmartScreenSections/SmartScreen.constants';
 import { controlDevice, deviceStatus } from '../components/Smart/SmartScreenSections/api';
 import styles from '../components/Smart/SmartScreenSections/SmartScreen.styles';
 import DeviceGrid from '../components/Smart/SmartScreenSections/DeviceGrid';
@@ -146,6 +149,7 @@ const ipv4Regex = /^(25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d{2
 
 // Ignore self-originated callback echoes for a short window after in-app controls.
 const SELF_CALLBACK_SUPPRESS_MS = 2200;
+const HEADER_HEIGHT = 240;
 
 export default function SmartScreen({ navigation }) {
   const { getActiveLanToken, getActiveWanToken, networkMode } = useAuth();
@@ -161,13 +165,16 @@ export default function SmartScreen({ navigation }) {
 
   // Initialise from the mode determined at login (LAN or WAN).
   const [selectedOption, setSelectedOption] = useState(networkMode || 'WAN');
-  const [deviceCategories, setDeviceCategories] = useState(INITIAL_DEVICE_CATEGORIES);
+  const [selectedMockup, setSelectedMockup] = useState(MOCKUP_OPTIONS.MOCKUP_2);
+  const [deviceCategories, setDeviceCategories] = useState(() => getDeviceCategoriesByMockup(MOCKUP_OPTIONS.MOCKUP_2));
+  const [activeTab, setActiveTab] = useState('All Devices');
   const scrollY = useRef(new Animated.Value(0)).current;
   const colors = useColors();
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedDevice, setSelectedDevice] = useState(null);
   const [selectedDeviceStatus, setSelectedDeviceStatus] = useState(null);
   const [callbackRegistered, setCallbackRegistered] = useState(false);
+  const strictStatusLookup = selectedMockup === MOCKUP_OPTIONS.MOCKUP_1;
 
   // Local IPv4 state
   const [localIpv4, setLocalIpv4] = useState(null);
@@ -221,6 +228,13 @@ export default function SmartScreen({ navigation }) {
   useEffect(() => {
     setCallbackRegistered(false);
   }, [selectedOption]);
+
+  useEffect(() => {
+    setDeviceCategories(getDeviceCategoriesByMockup(selectedMockup));
+    setActiveTab('All Devices');
+    setSelectedDevice(null);
+    setModalVisible(false);
+  }, [selectedMockup]);
 
   useEffect(() => {
     const eventEmitter = new NativeEventEmitter(Akuvox);
@@ -571,18 +585,17 @@ export default function SmartScreen({ navigation }) {
   }, [selectedOption]);
 
   const headerTranslateY = scrollY.interpolate({
-    inputRange: [0, 166],
-    outputRange: [0, -196],
+    inputRange: [0, HEADER_HEIGHT],
+    outputRange: [0, -(HEADER_HEIGHT + 30)],
     extrapolate: 'clamp',
   });
 
   const tabsTranslateY = scrollY.interpolate({
-    inputRange: [0, 166],
-    outputRange: [166, 0],
+    inputRange: [0, HEADER_HEIGHT],
+    outputRange: [HEADER_HEIGHT, 0],
     extrapolate: 'clamp',
   });
 
-  const [activeTab, setActiveTab] = useState('All Devices');
   const allDevices = deviceCategories.flatMap((category) => category.items);
   const categories = [{ category: 'All Devices', items: allDevices }, ...deviceCategories];
   const filteredDevices = categories.find((c) => c.category === activeTab)?.items || [];
@@ -599,16 +612,19 @@ export default function SmartScreen({ navigation }) {
         return;
       }
       (async () => {
+        setSelectedDeviceStatus(null);
         const headers = await getHeaders();
         deviceStatus(dev.device_id, selectedOption, setSelectedDeviceStatus, headers, {
           deviceTitle: selectedDevice?.title,
           abilityId: dev?.ability_id,
+          strictDeviceId: strictStatusLookup,
+          selectedMockup,
         });
       })();
     } else {
       setSelectedDeviceStatus(null);
     }
-  }, [modalVisible, selectedDevice, selectedOption]);
+  }, [modalVisible, selectedDevice, selectedOption, strictStatusLookup]);
 
   const handleToggle = async (device, newControl) => {
     const mode = selectedOption.toLowerCase();
@@ -631,10 +647,14 @@ export default function SmartScreen({ navigation }) {
     const command = dev.commandPair[newControl];
     const headers = await getHeaders();
     markSelfControl(mode, dev.device_id, dev.ability_id);
-    controlDevice(dev.device_id, dev.ability_id, command, null, selectedOption, headers);
+    controlDevice(dev.device_id, dev.ability_id, command, null, selectedOption, headers, {
+      selectedMockup,
+    });
     deviceStatus(dev.device_id, selectedOption, setSelectedDeviceStatus, headers, {
       deviceTitle: device?.title,
       abilityId: dev?.ability_id,
+      strictDeviceId: strictStatusLookup,
+      selectedMockup,
     });
   };
 
@@ -651,7 +671,9 @@ export default function SmartScreen({ navigation }) {
       : { position_percent: position };
     const headers = await getHeaders();
     markSelfControl(mode, dev.device_id, dev.ability_id);
-    controlDevice(dev.device_id, dev.ability_id, command, attribute, selectedOption, headers);
+    controlDevice(dev.device_id, dev.ability_id, command, attribute, selectedOption, headers, {
+      selectedMockup,
+    });
   };
 
   const handleSetTemperature = async (device, temperature) => {
@@ -667,7 +689,9 @@ export default function SmartScreen({ navigation }) {
     const command = dev.commandPair['on'];
     const headers = await getHeaders();
     markSelfControl(mode, dev.device_id, dev.ability_id);
-    controlDevice(dev.device_id, dev.ability_id, command, attribute, selectedOption, headers);
+    controlDevice(dev.device_id, dev.ability_id, command, attribute, selectedOption, headers, {
+      selectedMockup,
+    });
   };
 
   const handleSetHVACMode = async (device, HVACmode, temperature) => {
@@ -683,7 +707,9 @@ export default function SmartScreen({ navigation }) {
     const command = dev.commandPair['on'];
     const headers = await getHeaders();
     markSelfControl(mode, dev.device_id, dev.ability_id);
-    controlDevice(dev.device_id, dev.ability_id, command, attribute, selectedOption, headers);
+    controlDevice(dev.device_id, dev.ability_id, command, attribute, selectedOption, headers, {
+      selectedMockup,
+    });
   };
 
   const handleSetFanSpeed = async (device, speed, temperature) => {
@@ -699,7 +725,9 @@ export default function SmartScreen({ navigation }) {
     const command = dev.commandPair['on'];
     markSelfControl(mode, dev.device_id, dev.ability_id);
     const headers = await getHeaders();
-    controlDevice(dev.device_id, dev.ability_id, command, attribute, selectedOption, headers);
+    controlDevice(dev.device_id, dev.ability_id, command, attribute, selectedOption, headers, {
+      selectedMockup,
+    });
   };
 
   const handleSetBrightness = async (device, Brightness) => {
@@ -715,7 +743,9 @@ export default function SmartScreen({ navigation }) {
     markSelfControl(mode, dev.device_id, dev.ability_id);
     const command = dev.commandPair['on'];
     const headers = await getHeaders();
-    controlDevice(dev.device_id, dev.ability_id, command, attribute, selectedOption, headers);
+    controlDevice(dev.device_id, dev.ability_id, command, attribute, selectedOption, headers, {
+      selectedMockup,
+    });
   };
 
   // Build callback URL strictly with IPv4. Fallback to prior static IPv4 if detection fails.
@@ -735,7 +765,12 @@ export default function SmartScreen({ navigation }) {
       <Animated.View style={[styles.headerContainer, { transform: [{ translateY: headerTranslateY }] }]}>
         <Header />
         {/* lanHeaders prop removed from StatsSection if not used there; keep if required */}
-        <StatsSection selectedOption={selectedOption} setSelectedOption={setSelectedOption} />
+        <StatsSection
+          selectedOption={selectedOption}
+          setSelectedOption={setSelectedOption}
+          selectedMockup={selectedMockup}
+          setSelectedMockup={setSelectedMockup}
+        />
       </Animated.View>
       <Animated.View style={[styles.tabsContainer, { transform: [{ translateY: tabsTranslateY }] }]}>
         <Tabs tabs={categories.map((c) => c.category)} onTabChange={handleTabChange} activeTab={activeTab} />

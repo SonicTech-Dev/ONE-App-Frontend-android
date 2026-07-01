@@ -7,7 +7,7 @@ export default StyleSheet.create({
     width: '100%',
     zIndex: 2,
     backgroundColor: '#f5f1ff',
-    height: 166,
+    height: 240,
     borderBottomLeftRadius: 22,
     borderBottomRightRadius: 22,
   },
@@ -17,7 +17,7 @@ export default StyleSheet.create({
     backgroundColor: '#f5f1ff',
   },
   scrollContainer: {
-    paddingTop: '41%',
+    paddingTop: '56%',
     paddingBottom: "20%",
     paddingHorizontal: 10,
   },

@@ -7,8 +7,9 @@ import { TouchableOpacity, View, Text } from 'react-native';
 import OnlineStatus from './OnlineStatus';
 import { useNavigation } from '@react-navigation/native';
 import styles from './SmartScreenSections/SmartScreen.styles';
+import { MOCKUP_OPTIONS } from './SmartScreenSections/SmartScreen.constants';
 
-const StatsSection = ({ selectedOption, setSelectedOption, lanHeaders }) => {
+const StatsSection = ({ selectedOption, setSelectedOption, selectedMockup, setSelectedMockup, lanHeaders }) => {
   // Legacy: parent may have headers, but OnlineStatus now generates fresh ones per request.
   const lanAuthToken = lanHeaders?.Authorization ?? lanHeaders?.token ?? null;
   const navigation = useNavigation();
@@ -30,7 +31,7 @@ const StatsSection = ({ selectedOption, setSelectedOption, lanHeaders }) => {
         {/* Smart Lock */}
         <TouchableOpacity 
           style={styles.actionButtonWrapper} 
-          onPress={() => navigation.navigate('SmartLockScreen', { selectedOption })}
+          onPress={() => navigation.navigate('SmartLockScreen', { selectedOption, selectedMockup })}
           activeOpacity={0.7}
         >
           <View style={[styles.actionButtonIcon, { backgroundColor: '#efe6ff' }]}>
@@ -85,12 +86,27 @@ const StatsSection = ({ selectedOption, setSelectedOption, lanHeaders }) => {
           </RadioOption>
         </RadioContainer>
         <NavigateButton
-          onPress={() => navigation.navigate('DeviceStatuses', { selectedOption, lanAuthToken })}
+          onPress={() => navigation.navigate('DeviceStatuses', { selectedOption, selectedMockup, lanAuthToken })}
         >
           <NavigateText>All Devices Status</NavigateText>
         </NavigateButton>
-        <OnlineStatus selectedOption={selectedOption} />
+        <OnlineStatus selectedOption={selectedOption} selectedMockup={selectedMockup} />
       </RadioRow>
+
+      <MockupRow>
+        <MockupLabel>Device Set</MockupLabel>
+        <RadioContainer>
+          <RadioOption onPress={() => setSelectedMockup(MOCKUP_OPTIONS.MOCKUP_1)}>
+            <RadioCircle selected={selectedMockup === MOCKUP_OPTIONS.MOCKUP_1} />
+            <RadioText>Mockup 1</RadioText>
+          </RadioOption>
+
+          <RadioOption onPress={() => setSelectedMockup(MOCKUP_OPTIONS.MOCKUP_2)}>
+            <RadioCircle selected={selectedMockup === MOCKUP_OPTIONS.MOCKUP_2} />
+            <RadioText>Mockup 2</RadioText>
+          </RadioOption>
+        </RadioContainer>
+      </MockupRow>
     </>
   );
 };
@@ -180,5 +196,18 @@ const NavigateButton = styled(TouchableOpacity)`
 const NavigateText = styled.Text`
   font-size: 11px;
   color: #5d41b0;
+  font-weight: 700;
+`;
+
+const MockupRow = styled.View`
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px 0 14px;
+`;
+
+const MockupLabel = styled.Text`
+  font-size: 12px;
+  color: #6b54a8;
   font-weight: 700;
 `;

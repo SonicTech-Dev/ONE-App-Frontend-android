@@ -15,13 +15,14 @@ import {
 import Screen from '../../Screen';
 import useColors from '../../../hooks/useColors';
 import { useAuth } from '../../../context/AuthContext';
+import { MOCKUP_OPTIONS } from '../SmartScreenSections/SmartScreen.constants';
 
 const DEVICE_IP = '192.168.2.102';
 let sdkInitialized = false; // module-level guard so initSdk is only called once
 const FALLBACK_WAN_RTSP_URL = 'rtsp://rtsp-a.ecloud.akubela.com:10554/507B91E334CC';
-// onsite const FALLBACK_WAN_RTSP_URL = 'rtsp://rtsp-a.ecloud.akubela.com:10554/507B91E14E64';
+const FALLBACK_WAN_RTSP_URL_MOCKUP_1 = 'rtsp://rtsp-a.ecloud.akubela.com:10554/507B91E14E64';
 const FALLBACK_WAN_CIPHERTEXT = 'mUud6jHgyOriMe31CM4YdJaw14V6QnaEQWLnt9hBESVdbkf/mhnfJzm3IDTe1CDb+jHCKim61McoxnhQucbFWv/5Ncm0BbXKNtlU7gP9VJAO7OvtDBf1SANiyN0XRtabTvxYxigUdmE4CGCz0Vf67w==';
-// onsite const FALLBACK_WAN_CIPHERTEXT = 'mUud6jHgyOriMe31CM4YdN4wBdaPnUSPB34SX17EBxUU4y74REq8CPyGxOAVdgOxR4v/c7yUd6oILUpZ21pTLsr1OE3tN2GOFmTW+VSaQRRS6KbjskTAvbhLumJ6hVBDcpYWwDgatX9EGCFmZ0svKQ==';
+const FALLBACK_WAN_CIPHERTEXT_MOCKUP_1 = 'mUud6jHgyOriMe31CM4YdN4wBdaPnUSPB34SX17EBxUU4y74REq8CPyGxOAVdgOxR4v/c7yUd6oILUpZ21pTLsr1OE3tN2GOFmTW+VSaQRRS6KbjskTAvbhLumJ6hVBDcpYWwDgatX9EGCFmZ0svKQ==';
 const MAX_MONITOR_RETRIES = 3;
 
 /** Extracts host IP from any rtsp://host:port/... or rtsp://user:pass@host:port/... URL */
@@ -69,16 +70,23 @@ export default function SL50LockScreen({ route }) {
     : String(networkMode || 'WAN').toUpperCase() === 'LAN'
       ? 'LAN'
       : 'WAN';
-  const wanRtspUrl = route?.params?.wanRtspUrl || FALLBACK_WAN_RTSP_URL;
-  const wanCiphertext = route?.params?.wanCiphertext || FALLBACK_WAN_CIPHERTEXT;
+
+  const selectedMockup = route?.params?.selectedMockup === MOCKUP_OPTIONS.MOCKUP_1
+    ? MOCKUP_OPTIONS.MOCKUP_1
+    : MOCKUP_OPTIONS.MOCKUP_2;
+  const isMockup1 = selectedMockup === MOCKUP_OPTIONS.MOCKUP_1;
+
+  const wanRtspUrl = route?.params?.wanRtspUrl || (
+    isMockup1 ? FALLBACK_WAN_RTSP_URL_MOCKUP_1 : FALLBACK_WAN_RTSP_URL
+  );
+  const wanCiphertext = route?.params?.wanCiphertext || (
+    isMockup1 ? FALLBACK_WAN_CIPHERTEXT_MOCKUP_1 : FALLBACK_WAN_CIPHERTEXT
+  );
 
   // Device config — IDs are fixed per residence, IP is resolved automatically
-  const residenceId = 'rabd2c6d2aecc4ce3be11e25b4ecd3c82';
-  // onsite const residenceId = 'r45844047053e43d78fe5272c5badbd3a';
+  const residenceId = isMockup1 ? 'r45844047053e43d78fe5272c5badbd3a' : 'rabd2c6d2aecc4ce3be11e25b4ecd3c82';
   const userId     = 'a9b41de81c3284515a5e833d53412fe14';
-  // onsite const userId = 'a9b41de81c3284515a5e833d53412fe14';
-  const deviceId   = 'da1c171e3a276417fb2212f0abb2de46f';
-  // onsite const deviceId = 'd17a685f1c5dd4aa893cda99623df553e';
+  const deviceId   = isMockup1 ? 'd17a685f1c5dd4aa893cda99623df553e' : 'da1c171e3a276417fb2212f0abb2de46f';
 
   // IP is NOT hardcoded — loaded from cache (written by SDK after first connect)
   const [deviceIp, setDeviceIp] = useState(DEVICE_IP);

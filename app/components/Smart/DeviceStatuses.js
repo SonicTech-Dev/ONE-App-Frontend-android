@@ -1,15 +1,23 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import styled from 'styled-components/native';
 import { useRoute } from '@react-navigation/native';
-import { INITIAL_DEVICE_CATEGORIES } from '../Smart/SmartScreenSections/SmartScreen.constants';
+import {
+  MOCKUP_OPTIONS,
+  getDeviceCategoriesByMockup,
+} from '../Smart/SmartScreenSections/SmartScreen.constants';
 import DeviceListOnlineStatus from './online_status_list';
 
 const DeviceStatuses = () => {
   const route = useRoute();
-  const { selectedOption = 'LAN' } = route.params || {};
+  const {
+    selectedOption = 'LAN',
+    selectedMockup = MOCKUP_OPTIONS.MOCKUP_2,
+  } = route.params || {};
 
   const [statusMap, setStatusMap] = useState({});
   const [loading, setLoading] = useState(false);
+  const deviceCategories = useMemo(() => getDeviceCategoriesByMockup(selectedMockup), [selectedMockup]);
+  const allowNameFallback = selectedMockup === MOCKUP_OPTIONS.MOCKUP_2;
 
   const handleStatuses = useCallback((map) => {
     setStatusMap(map || {});
@@ -23,6 +31,7 @@ const DeviceStatuses = () => {
       {/* Single bulk fetch for all statuses by device_id */}
       <DeviceListOnlineStatus
         selectedOption={selectedOption}
+        selectedMockup={selectedMockup}
         pollingInterval={30000}
         onStatuses={handleStatuses}
         onLoadingChange={handleLoadingChange}
@@ -33,7 +42,7 @@ const DeviceStatuses = () => {
           <HeaderTitle>All Device Status</HeaderTitle>
           <HeaderSubtitle>Live health for every connected smart device.</HeaderSubtitle>
         </HeaderCard>
-        {INITIAL_DEVICE_CATEGORIES.map((category, categoryIndex) => (
+        {deviceCategories.map((category, categoryIndex) => (
           <CategoryContainer key={categoryIndex}>
             <CategoryHeader>{category.category}</CategoryHeader>
             <DeviceGroup>
@@ -45,7 +54,7 @@ const DeviceStatuses = () => {
 
                 const titleKey = `name:${String(device?.title || '').trim().toLowerCase()}`;
                 const hasIdStatus = typeof statusMap[deviceId] === 'boolean';
-                const hasTitleStatus = typeof statusMap[titleKey] === 'boolean';
+                const hasTitleStatus = allowNameFallback && typeof statusMap[titleKey] === 'boolean';
                 const hasStatus = hasIdStatus || hasTitleStatus;
                 const isOnline = hasIdStatus
                   ? statusMap[deviceId]

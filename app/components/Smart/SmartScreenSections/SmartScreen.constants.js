@@ -1,9 +1,8 @@
 // Put your INITIAL_DEVICE_CATEGORIES and LAN_HEADERS here
 //Mockup Site Device ID and Category//
-/*
-export const INITIAL_DEVICE_CATEGORIES = [
+export const MOCKUP_1_DEVICE_CATEGORIES = [
       {
-        category: 'LiVING ROOM',
+        category: 'Living Room',
         items: [
           
           { title: 'Hypanel Supreme', location: 'Reception', status: 'On', color: '#44ad57ff', isOn: false, iconName: 'smart-screen' ,library: 'MaterialIcons',
@@ -294,11 +293,10 @@ export const INITIAL_DEVICE_CATEGORIES = [
         ],
       },  
 ];
-*/
 
 //Mockup Kit 2 in sonic office for testing Device ID and category//
 
-export const INITIAL_DEVICE_CATEGORIES = [
+export const MOCKUP_2_DEVICE_CATEGORIES = [
       {
         category: 'Living Room',
         items: [
@@ -338,13 +336,13 @@ export const INITIAL_DEVICE_CATEGORIES = [
           }},
           { title: 'Door/Window Sensor LivingRoom', location: 'Living Room', color: '#4ac0ff', isOn: false, iconName: 'door' , library: 'MaterialCommunityIcons',
           lan: {
-            device_id: '963634cf88be824f39866f2cbbfecf1a',
-            ability_id: 'binary_sensor.9eb285a3ec4c036039719da212ef67cb',
+            device_id: '0f15b4a26e78b6eb72281ad8d38a51e0',
+            ability_id: 'binary_sensor.b676118620296fe6e5f6e55625fc04b8',
             commandPair: { on: 'turn_on', off: 'turn_off', stop: 'stop' }
           },
           wan: {
-            device_id: 'dca58b8e3a09d47dcbf283df502eb27df',
-            ability_id: 'e27caabe4d6214c9d91330723181de88b',
+            device_id: 'd9f0054ffdb844d8f88f02c1cb09bec6a',
+            ability_id: 'ed4512f04cfaf4111a16642305dcd9c5f',
             commandPair: { on: 'open', off: 'close' , stop: 'stop' }
           }},
         ],
@@ -437,13 +435,13 @@ export const INITIAL_DEVICE_CATEGORIES = [
           }},
           { title: 'Door/Window Sensor Bedroom', location: 'Bedroom', color: '#ffbf42', isOn: false, iconName: 'door' ,library: 'MaterialCommunityIcons',
           lan: {
-            device_id: '1b6b6a9532d2bfe62e3cd41a7be017e3',
-            ability_id: 'binary_sensor.253eafe4d958a3f2218355ed337ff28d',
+            device_id: '87b02f482a836a27eedc2c923f9fb25b',
+            ability_id: 'binary_sensor.140af998a8a0b116ccf4c7a045970259',
             commandPair: { on: 'turn_on', off: 'turn_off' }
           },
           wan: {
-            device_id: 'd752a71c34d9441f59e8d5da165713788',
-            ability_id: 'eca48d1c9e7e447b986e1bb19b025c7ac',
+            device_id: 'def01dc80dcae41aea36783678a0a3783',
+            ability_id: 'ecb22df599c9a4175b26502257e97cca3',
             commandPair: { on: 'turn_on', off: 'turn_off' }
           }},
         ],
@@ -507,12 +505,12 @@ export const INITIAL_DEVICE_CATEGORIES = [
           }},
           { title: 'Flood Sensor Kitchen', location: 'Kitchen', color: '#8e44ad', isOn: false, iconName: 'water' ,library: 'MaterialCommunityIcons',
           lan: {
-            device_id: 'd76c6e7492f962475199668f9648d45e',
-            ability_id: 'binary_sensor.e13185b6578c6b036789f77f3214f1d3',
+            device_id: '0641c879eba8e9a9247d204c313b0660',
+            ability_id: 'e088670036a8546c3b762eb8b117bbc3f',
             commandPair: { on: 'turn_on', off: 'turn_off' }
           },
           wan: {
-            device_id: 'd2e06cc8b96cc48c9890e2651b5d00b6f',
+            device_id: 'dde06e54e26fa4b44a78fa46d756845ad',
             ability_id: 'e674c572da9014e6ca81d367a4a95417c',
             commandPair: { on: 'turn_on', off: 'turn_off' }
           }},
@@ -589,3 +587,21 @@ export const INITIAL_DEVICE_CATEGORIES = [
         ],
       },  
 ];
+
+export const INITIAL_DEVICE_CATEGORIES = MOCKUP_2_DEVICE_CATEGORIES;
+
+export const MOCKUP_OPTIONS = {
+  MOCKUP_1: 'mockup1',
+  MOCKUP_2: 'mockup2',
+};
+
+export const getDeviceCategoriesByMockup = (selectedMockup = MOCKUP_OPTIONS.MOCKUP_2) => {
+  const source = selectedMockup === MOCKUP_OPTIONS.MOCKUP_1
+    ? MOCKUP_1_DEVICE_CATEGORIES
+    : MOCKUP_2_DEVICE_CATEGORIES;
+
+  return source.map((category) => ({
+    ...category,
+    items: category.items.map((device) => ({ ...device })),
+  }));
+};

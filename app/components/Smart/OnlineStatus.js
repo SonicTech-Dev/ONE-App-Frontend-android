@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { View, Text } from 'react-native';
 import styled from 'styled-components/native';
 import { useAuth } from '../../context/AuthContext';
+import { MOCKUP_OPTIONS } from './SmartScreenSections/SmartScreen.constants';
 
 const StatusText = styled.Text`
   font-size: 16px;
@@ -19,19 +20,30 @@ const StatusText = styled.Text`
  */
 export default function OnlineStatus({
   selectedOption = 'LAN',
+  selectedMockup = MOCKUP_OPTIONS.MOCKUP_2,
   pollingInterval = 30000,
   wanBackendUrl = 'https://one-development.soniciot.com/device_status/',
   lanUrl = 'http://192.168.2.115/api/v1.0/device',
   requestId = 'c45e846ca23ab42c9ae469d988ae32a96',
-  //oniste - deviceId = 'd4f54a92bea2a440c8a6a23d0b636dcf7',
-  deviceId = 'd03852d726b074d77a7d658e7fac7d3b6',
-  //onsite - residenceId = 'r45844047053e43d78fe5272c5badbd3a',
-  residenceId = 'rabd2c6d2aecc4ce3be11e25b4ecd3c82'
+  deviceId,
+  residenceId,
 }) {
   const { getActiveLanToken, getActiveWanToken } = useAuth();
   const [isOnline, setIsOnline] = useState(null);
   const [loading, setLoading] = useState(false);
   const intervalRef = useRef(null);
+
+  const activeDeviceId = deviceId || (
+    selectedMockup === MOCKUP_OPTIONS.MOCKUP_1
+      ? 'd4f54a92bea2a440c8a6a23d0b636dcf7'
+      : 'd03852d726b074d77a7d658e7fac7d3b6'
+  );
+
+  const activeResidenceId = residenceId || (
+    selectedMockup === MOCKUP_OPTIONS.MOCKUP_1
+      ? 'r45844047053e43d78fe5272c5badbd3a'
+      : 'rabd2c6d2aecc4ce3be11e25b4ecd3c82'
+  );
 
   useEffect(() => {
     let mounted = true;
@@ -43,12 +55,12 @@ export default function OnlineStatus({
       const lanBody = {
         command: 'get_device_info',
         id: requestId,
-        param: { device_id: deviceId },
+        param: { device_id: activeDeviceId },
       };
       const wanBody = {
         command: 'get_device_list',
         id: requestId,
-        param: { residence_id: residenceId, show_ability: true },
+        param: { residence_id: activeResidenceId, show_ability: true },
       };
 
       try {
@@ -76,7 +88,7 @@ export default function OnlineStatus({
             return;
           }
           const json = await res.json();
-          const onlineFlag = extractDeviceOnlineFromWanList(json, deviceId);
+          const onlineFlag = extractDeviceOnlineFromWanList(json, activeDeviceId);
           if (mounted) setIsOnline(onlineFlag === null ? false : onlineFlag);
           return;
         }
@@ -162,8 +174,8 @@ export default function OnlineStatus({
     wanBackendUrl,
     lanUrl,
     requestId,
-    deviceId,
-    residenceId,
+    activeDeviceId,
+    activeResidenceId,
   ]);
 
   if (loading && isOnline === null) {

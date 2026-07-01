@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 // Legacy LanAuth import removed
 import { useAuth } from '../../context/AuthContext';
+import { MOCKUP_OPTIONS } from './SmartScreenSections/SmartScreen.constants';
 
 /**
  * DeviceListOnlineStatus
@@ -24,6 +25,7 @@ import { useAuth } from '../../context/AuthContext';
  */
 export default function DeviceListOnlineStatus({
   selectedOption = 'LAN',
+  selectedMockup = MOCKUP_OPTIONS.MOCKUP_2,
   pollingInterval = 30000,
 
   // Endpoints
@@ -32,8 +34,7 @@ export default function DeviceListOnlineStatus({
 
   // Payload values
   requestId = 'c45e846ca23ab42c9ae469d988ae32a96',
-  //onsite - residenceId = 'r45844047053e43d78fe5272c5badbd3a',
-  residenceId = 'rabd2c6d2aecc4ce3be11e25b4ecd3c82',
+  residenceId,
 
   // Callbacks
   onStatuses = () => {},
@@ -41,6 +42,11 @@ export default function DeviceListOnlineStatus({
 }) {
   const { getActiveLanToken, getActiveWanToken } = useAuth();
   const intervalRef = useRef(null);
+  const activeResidenceId = residenceId || (
+    selectedMockup === MOCKUP_OPTIONS.MOCKUP_1
+      ? 'r45844047053e43d78fe5272c5badbd3a'
+      : 'rabd2c6d2aecc4ce3be11e25b4ecd3c82'
+  );
 
   useEffect(() => {
     let mounted = true;
@@ -58,7 +64,7 @@ export default function DeviceListOnlineStatus({
       const wanBody = {
         command: 'get_device_list',
         id: requestId,
-        param: { residence_id: residenceId, show_ability: true },
+        param: { residence_id: activeResidenceId, show_ability: true },
       };
 
       try {
@@ -164,7 +170,7 @@ export default function DeviceListOnlineStatus({
       controller.abort();
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [selectedOption, pollingInterval, wanBackendUrl, lanUrl, requestId, residenceId]);
+  }, [selectedOption, pollingInterval, wanBackendUrl, lanUrl, requestId, activeResidenceId]);
 
   return null;
 }
@@ -184,19 +190,21 @@ function buildWanStatusMap(json) {
   for (const device of rawArray) {
     if (!device) continue;
     const normalizedName = normalizeDeviceName(device.device_name || device.product_name);
+    const parentOnline = !!device.online;
     if (device.device_id) {
-      map[device.device_id] = !!device.online;
+      map[device.device_id] = parentOnline;
     }
     if (normalizedName) {
-      map[`name:${normalizedName}`] = !!device.online;
+      map[`name:${normalizedName}`] = parentOnline;
     }
     if (Array.isArray(device.sub_devices)) {
       for (const sub of device.sub_devices) {
         if (!sub || !sub.device_id) continue;
-        map[sub.device_id] = !!sub.online;
+        const subOnline = typeof sub.online === 'boolean' ? sub.online : parentOnline;
+        map[sub.device_id] = subOnline;
         const normalizedSubName = normalizeDeviceName(sub.device_name || sub.product_name);
         if (normalizedSubName) {
-          map[`name:${normalizedSubName}`] = !!sub.online;
+          map[`name:${normalizedSubName}`] = subOnline;
         }
       }
     }
@@ -218,13 +226,14 @@ function buildLanStatusMap(json) {
 
   for (const device of json.result) {
     if (!device) continue;
+    const parentOnline = !!device.online;
     if (device.device_id) {
-      map[device.device_id] = !!device.online;
+      map[device.device_id] = parentOnline;
     }
     if (Array.isArray(device.sub_devices)) {
       for (const sub of device.sub_devices) {
         if (!sub || !sub.device_id) continue;
-        map[sub.device_id] = !!sub.online;
+        map[sub.device_id] = typeof sub.online === 'boolean' ? sub.online : parentOnline;
       }
     }
   }
