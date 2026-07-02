@@ -3,28 +3,46 @@ import { View, Text, TouchableOpacity, StyleSheet, Dimensions } from 'react-nati
 import RTSPViewer from './RTSPViewer';
 import Screen from '../../Screen';
 
-const CAMERA_1 = {
-  LAN: 'rtsp://admin:Sonic123@192.168.2.121:554',
-  WAN: 'rtsp://d4f54a92bea2a440c8a6a23d0b636dcf7:p5241f530fefc4497923e3db8de08c851@rtsp-a.ecloud.akubela.com:10554/TD-0C110500755C-ib89acd84d5864f288393fbe35775cf78',
-};
-
-const CAMERA_2 = {
-  LAN: 'rtsp://admin:Sonic123@192.168.2.122:554/cam/realmonitor?channel=1/',
-  WAN: 'rtsp://d4f54a92bea2a440c8a6a23d0b636dcf7:p5241f530fefc4497923e3db8de08c851@rtsp-a.ecloud.akubela.com:10554/TD-0C110500755C-if36b21d00f1d41259595fc4ec227cc6b',
-};
+const CAMERAS = [
+  {
+    key: 'camera1',
+    label: 'Camera 1',
+    title: 'Hikvision Camera',
+    urls: {
+      LAN: 'rtsp://admin:Sonic123@192.168.2.121:554',
+      WAN: 'rtsp://d4f54a92bea2a440c8a6a23d0b636dcf7:p5241f530fefc4497923e3db8de08c851@rtsp-a.ecloud.akubela.com:10554/TD-0C110500755C-ib89acd84d5864f288393fbe35775cf78',
+    },
+  },
+  {
+    key: 'camera2',
+    label: 'Camera 2',
+    title: 'Dahua Camera',
+    urls: {
+      LAN: 'rtsp://admin:Sonic123@192.168.2.122:554/cam/realmonitor?channel=1&subtype=0',
+      WAN: 'rtsp://d4f54a92bea2a440c8a6a23d0b636dcf7:p5241f530fefc4497923e3db8de08c851@rtsp-a.ecloud.akubela.com:10554/TD-0C110500755C-i6213d5a5865342199b69b21c1e7592f4',
+    },
+  },
+  {
+    key: 'camera3',
+    label: 'Camera 3',
+    title: 'Entrance Camera',
+    urls: {
+      LAN: 'rtsp://admin:Sonic123@192.168.2.123:554/cam/realmonitor?channel=1&subtype=0',
+      WAN: 'rtsp://d4f54a92bea2a440c8a6a23d0b636dcf7:p5241f530fefc4497923e3db8de08c851@rtsp-a.ecloud.akubela.com:10554/TD-0C110500755C-idf4027bb4b2b45c8aae58f3d29c2fe7b',
+    },
+  },
+];
 
 
 export default function CameraView({ route }) {
   const selectedOption = route?.params?.selectedOption === 'WAN' ? 'WAN' : 'LAN';
-  const [selectedTab, setSelectedTab] = useState('Hikvision Camera');
-
-  // URLs for the selected camera
-  const urls = selectedTab === 'Hikvision Camera' ? CAMERA_1 : CAMERA_2;
+  const [selectedCameraKey, setSelectedCameraKey] = useState(CAMERAS[0].key);
+  const selectedCamera = CAMERAS.find((camera) => camera.key === selectedCameraKey) || CAMERAS[0];
 
   // Choose the appropriate RTSP URL based on `selectedOption`
   const uri = useMemo(() => {
-    return selectedOption === 'LAN' ? urls.LAN : urls.WAN;
-  }, [selectedOption, urls]);
+    return selectedOption === 'LAN' ? selectedCamera.urls.LAN : selectedCamera.urls.WAN;
+  }, [selectedOption, selectedCamera]);
 
   const { width } = Dimensions.get('window');
   const playerHeight = Math.round((width * 9) / 16); // 16:9 player
@@ -46,32 +64,22 @@ export default function CameraView({ route }) {
           <Text style={styles.cardSubtitle}>Switch feeds and monitor entrances in real time.</Text>
 
           <View style={styles.tabContainer}>
-            <TouchableOpacity
-              style={[styles.tabButton, selectedTab === 'Hikvision Camera' && styles.tabButtonActive]}
-              onPress={() => setSelectedTab('Hikvision Camera')}
-            >
-              <Text
-                style={[
-                  styles.tabButtonText,
-                  selectedTab === 'Hikvision Camera' && styles.tabButtonTextActive,
-                ]}
+            {CAMERAS.map((camera) => (
+              <TouchableOpacity
+                key={camera.key}
+                style={[styles.tabButton, selectedCameraKey === camera.key && styles.tabButtonActive]}
+                onPress={() => setSelectedCameraKey(camera.key)}
               >
-                Camera 1
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.tabButton, selectedTab === 'Dahua Camera' && styles.tabButtonActive]}
-              onPress={() => setSelectedTab('Dahua Camera')}
-            >
-              <Text
-                style={[
-                  styles.tabButtonText,
-                  selectedTab === 'Dahua Camera' && styles.tabButtonTextActive,
-                ]}
-              >
-                Camera 2
-              </Text>
-            </TouchableOpacity>
+                <Text
+                  style={[
+                    styles.tabButtonText,
+                    selectedCameraKey === camera.key && styles.tabButtonTextActive,
+                  ]}
+                >
+                  {camera.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
           </View>
 
           <View style={[styles.playerContainer, { height: playerHeight }]}>
