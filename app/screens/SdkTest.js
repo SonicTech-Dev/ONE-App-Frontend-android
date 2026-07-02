@@ -114,6 +114,7 @@ export default function SdkContactScreen({ navigation, route }) {
   const [selectedContact, setSelectedContact] = useState(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [registeredTransport, setRegisteredTransport] = useState(null); // 'wan' | 'lan' | null
+  const [registeredMockup, setRegisteredMockup] = useState(null);
 
   const selectedMockup = route?.params?.selectedMockup === MOCKUP_OPTIONS.MOCKUP_1
     ? MOCKUP_OPTIONS.MOCKUP_1
@@ -138,10 +139,14 @@ export default function SdkContactScreen({ navigation, route }) {
         AsyncStorage.getItem('registeredTransport').then(t => {
           if (t === 'lan' || t === 'wan') setRegisteredTransport(t);
         }).catch(() => {});
+        AsyncStorage.getItem('registeredMockup').then(m => {
+          if (m === MOCKUP_OPTIONS.MOCKUP_1 || m === MOCKUP_OPTIONS.MOCKUP_2) setRegisteredMockup(m);
+        }).catch(() => {});
       } else {
         // status=1 (trying) or status=3 (failed): block calls immediately so the
         // user cannot dial while the SIP line is switching transports or in error.
         setRegisteredTransport(null);
+        setRegisteredMockup(null);
       }
     });
     return () => sub.remove();
@@ -151,10 +156,16 @@ export default function SdkContactScreen({ navigation, route }) {
   const loadTransport = async () => {
     try {
       const t = await AsyncStorage.getItem('registeredTransport');
+      const m = await AsyncStorage.getItem('registeredMockup');
       if (t === 'lan' || t === 'wan') {
         setRegisteredTransport(t);
       } else {
         setRegisteredTransport(null);
+      }
+      if (m === MOCKUP_OPTIONS.MOCKUP_1 || m === MOCKUP_OPTIONS.MOCKUP_2) {
+        setRegisteredMockup(m);
+      } else {
+        setRegisteredMockup(null);
       }
     } catch (e) {
       console.warn('[Contacts] Failed to load registeredTransport:', e);
@@ -162,7 +173,10 @@ export default function SdkContactScreen({ navigation, route }) {
   };
 
   const isTransportReady = () => {
-    return sipStatus === 2 && registeredTransport === selectedTransport;
+    const transportReady = sipStatus === 2 && registeredTransport === selectedTransport;
+    if (!transportReady) return false;
+    if (selectedTransport !== 'wan') return true;
+    return registeredMockup === selectedMockup;
   };
 
   // Keep transport synced when this screen regains focus (after user switches LAN/WAN in SmartScreen).
@@ -181,12 +195,16 @@ export default function SdkContactScreen({ navigation, route }) {
     const syncExpectedTransport = async () => {
       try {
         const storedTransport = await AsyncStorage.getItem('registeredTransport');
+        const storedMockup = await AsyncStorage.getItem('registeredMockup');
         const currentSipStatus = await Akuvox.getSipStatus();
         if (!mounted) return;
 
         setSipStatus(currentSipStatus);
         if (storedTransport === 'lan' || storedTransport === 'wan') {
           setRegisteredTransport(storedTransport);
+        }
+        if (storedMockup === MOCKUP_OPTIONS.MOCKUP_1 || storedMockup === MOCKUP_OPTIONS.MOCKUP_2) {
+          setRegisteredMockup(storedMockup);
         }
       } catch (_) {}
     };
@@ -268,7 +286,7 @@ export default function SdkContactScreen({ navigation, route }) {
     if (!isTransportReady()) {
       Alert.alert(
         'Transport Not Ready',
-        `Expected ${selectedTransport.toUpperCase()} registration. Current: ${registeredTransport ? registeredTransport.toUpperCase() : 'none'}. Please wait a moment and try again.`
+        `Expected ${selectedTransport.toUpperCase()} on ${selectedMockup}. Current: ${registeredTransport ? registeredTransport.toUpperCase() : 'none'} on ${registeredMockup || 'none'}. Please wait for SmartScreen registration and try again.`
       );
       return;
     }
@@ -320,7 +338,7 @@ export default function SdkContactScreen({ navigation, route }) {
     if (!isTransportReady()) {
       Alert.alert(
         'Transport Not Ready',
-        `Expected ${selectedTransport.toUpperCase()} registration. Current: ${registeredTransport ? registeredTransport.toUpperCase() : 'none'}. Please wait a moment and try again.`
+        `Expected ${selectedTransport.toUpperCase()} on ${selectedMockup}. Current: ${registeredTransport ? registeredTransport.toUpperCase() : 'none'} on ${registeredMockup || 'none'}. Please wait for SmartScreen registration and try again.`
       );
       return;
     }
@@ -465,7 +483,7 @@ export default function SdkContactScreen({ navigation, route }) {
         </View>
       </View>
       <Text style={styles.transportHint}>
-        Selected: {selectedTransport.toUpperCase()} | Active: {registeredTransport ? registeredTransport.toUpperCase() : 'None'}
+        Selected: {selectedTransport.toUpperCase()} ({selectedMockup}) | Active: {registeredTransport ? registeredTransport.toUpperCase() : 'None'} ({registeredMockup || 'none'})
       </Text>
 
       <FlatList

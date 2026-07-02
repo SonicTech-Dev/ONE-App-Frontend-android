@@ -128,24 +128,33 @@ export default function ActiveCallScreen({ route, navigation }) {
       }
 
       const reason = String(data?.reason || '');
-      const isTemporaryFailure = /temporarily unavailable|not found|busy here|request timeout|decline|declined|not acceptable|forbidden|server internal error|service unavailable/i.test(reason);
+      const isUserInitiatedEnd = /cancel|hangup|terminated by local|local bye|user declined|declined by local/i.test(reason);
       const targets = Array.isArray(dialTargets) ? dialTargets : [];
       const nextIndex = currentDialIndex + 1;
 
-      if (isOutgoing && isTemporaryFailure && nextIndex < targets.length && !retryingRef.current) {
+      // For outgoing calls, aggressively fail over to next SIP target unless the user ended it.
+      if (isOutgoing && !isUserInitiatedEnd && nextIndex < targets.length && !retryingRef.current) {
         const nextTarget = targets[nextIndex];
         if (nextTarget) {
           retryingRef.current = true;
           setCurrentDialIndex(nextIndex);
           setActiveCallId(null);
           setSessionCallId(null);
+          setVideoRenderNonce((prev) => prev + 1);
 
           const nextMode = Number.isInteger(callVideoMode) ? callVideoMode : 1;
+          console.log('[ActiveCall] retrying next SIP target', {
+            reason,
+            nextIndex,
+            nextTarget,
+            totalTargets: targets.length,
+            mode: nextMode,
+          });
           retryTimeoutRef.current = setTimeout(() => {
             Akuvox.makeCall(nextTarget, remoteName || 'Unknown Caller', nextMode);
             retryTimeoutRef.current = null;
             retryingRef.current = false;
-          }, 250);
+          }, 350);
           return;
         }
       }

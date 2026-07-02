@@ -189,10 +189,13 @@ export default function SmartScreen({ navigation }) {
   // SIP state
   const [sipInitialized, setSipInitialized] = useState(false);
   const [lastRegisteredTransport, setLastRegisteredTransport] = useState(null); // 'lan' | 'wan' | null
+  const [lastRegisteredMockup, setLastRegisteredMockup] = useState(null);
   const [sipRegistrationStatus, setSipRegistrationStatus] = useState(null);
   // Ref so the onSipRegStatus event handler can read selectedOption without re-subscribing.
   const selectedOptionRef = useRef(selectedOption);
   useEffect(() => { selectedOptionRef.current = selectedOption; }, [selectedOption]);
+  const selectedMockupRef = useRef(selectedMockup);
+  useEffect(() => { selectedMockupRef.current = selectedMockup; }, [selectedMockup]);
   const selectedDeviceRef = useRef(selectedDevice);
   const modalVisibleRef = useRef(modalVisible);
   useEffect(() => { selectedDeviceRef.current = selectedDevice; }, [selectedDevice]);
@@ -256,8 +259,11 @@ export default function SmartScreen({ navigation }) {
       // This prevents contacts screen from trying to call on an unregistered line.
       if (status === 2) {
         const transport = selectedOptionRef.current === 'LAN' ? 'lan' : 'wan';
+        const currentMockup = selectedMockupRef.current;
         await AsyncStorage.setItem('registeredTransport', transport);
+        await AsyncStorage.setItem('registeredMockup', currentMockup);
         console.log('[SmartScreen] registeredTransport confirmed and saved:', transport);
+        console.log('[SmartScreen] registeredMockup confirmed and saved:', currentMockup);
       }
     });
 
@@ -272,9 +278,14 @@ export default function SmartScreen({ navigation }) {
       // The native SIP stack keeps the registration alive across screen navigations.
       try {
         const savedTransport = await AsyncStorage.getItem('registeredTransport');
+        const savedMockup = await AsyncStorage.getItem('registeredMockup');
         if (mounted && (savedTransport === 'lan' || savedTransport === 'wan')) {
           setLastRegisteredTransport(savedTransport);
           console.log('[SmartScreen] Restored registeredTransport from storage:', savedTransport);
+        }
+        if (mounted && (savedMockup === MOCKUP_OPTIONS.MOCKUP_1 || savedMockup === MOCKUP_OPTIONS.MOCKUP_2)) {
+          setLastRegisteredMockup(savedMockup);
+          console.log('[SmartScreen] Restored registeredMockup from storage:', savedMockup);
         }
       } catch (_) {}
 
@@ -321,9 +332,13 @@ export default function SmartScreen({ navigation }) {
               // Do NOT skip if status===2 but transport is 'wan' — we still need to switch.
               const currentStatus = await Akuvox.getSipStatus();
               const storedTransport = await AsyncStorage.getItem('registeredTransport');
+              const storedMockup = await AsyncStorage.getItem('registeredMockup');
               if (currentStatus === 2 && storedTransport === 'lan') {
                 console.log('[SmartScreen] SIP already registered (LAN), skipping re-registration.');
                 setLastRegisteredTransport('lan');
+                if (storedMockup === MOCKUP_OPTIONS.MOCKUP_1 || storedMockup === MOCKUP_OPTIONS.MOCKUP_2) {
+                  setLastRegisteredMockup(storedMockup);
+                }
                 setSipRegistrationStatus(2);
                 return;
               }
@@ -331,6 +346,7 @@ export default function SmartScreen({ navigation }) {
               // the new registration. The onSipRegStatus handler is the sole writer of
               // registeredTransport once a switch is in progress.
               await AsyncStorage.removeItem('registeredTransport');
+              await AsyncStorage.removeItem('registeredMockup');
               setSipRegistrationStatus(null);
               console.log('[SmartScreen] Fetching LAN SIP credentials...');
               const lanToken = await getActiveLanToken();
@@ -341,6 +357,7 @@ export default function SmartScreen({ navigation }) {
               // registeredTransport is written to AsyncStorage only when onSipRegStatus
               // fires status===2 to guarantee the SIP line is truly registered.
               setLastRegisteredTransport('lan');
+              setLastRegisteredMockup(selectedMockup);
               const status = await Akuvox.getSipStatus();
               setSipRegistrationStatus(status);
               console.log('[SmartScreen] SIP line status after LAN registration:', status);
@@ -350,15 +367,17 @@ export default function SmartScreen({ navigation }) {
             }
           }
         } else if (selectedOption === 'WAN') {
-          if (lastRegisteredTransport !== 'wan') {
+          if (lastRegisteredTransport !== 'wan' || lastRegisteredMockup !== selectedMockup) {
             try {
               // Only skip re-registration if the SIP line is already up on WAN specifically.
               // Do NOT skip if status===2 but transport is 'lan' — we still need to switch.
               const currentStatus = await Akuvox.getSipStatus();
               const storedTransport = await AsyncStorage.getItem('registeredTransport');
-              if (currentStatus === 2 && storedTransport === 'wan') {
+              const storedMockup = await AsyncStorage.getItem('registeredMockup');
+              if (currentStatus === 2 && storedTransport === 'wan' && storedMockup === selectedMockup) {
                 console.log('[SmartScreen] SIP already registered (WAN), skipping re-registration.');
                 setLastRegisteredTransport('wan');
+                setLastRegisteredMockup(selectedMockup);
                 setSipRegistrationStatus(2);
                 return;
               }
@@ -366,6 +385,7 @@ export default function SmartScreen({ navigation }) {
               // the new registration. The onSipRegStatus handler is the sole writer of
               // registeredTransport once a switch is in progress.
               await AsyncStorage.removeItem('registeredTransport');
+              await AsyncStorage.removeItem('registeredMockup');
               setSipRegistrationStatus(null);
               console.log('[SmartScreen] Fetching WAN SIP credentials...');
               const wanToken = await getActiveWanToken();
@@ -379,6 +399,7 @@ export default function SmartScreen({ navigation }) {
               // registeredTransport is written to AsyncStorage only when onSipRegStatus
               // fires status===2 to guarantee the SIP line is truly registered.
               setLastRegisteredTransport('wan');
+              setLastRegisteredMockup(selectedMockup);
               const status = await Akuvox.getSipStatus();
               setSipRegistrationStatus(status);
               console.log('[SmartScreen] SIP line status after WAN registration:', status);
@@ -390,7 +411,7 @@ export default function SmartScreen({ navigation }) {
     };
 
     register();
-  }, [sipInitialized, selectedOption, lastRegisteredTransport]);
+  }, [sipInitialized, selectedOption, selectedMockup, lastRegisteredTransport, lastRegisteredMockup]);
 
   useEffect(() => {
     if (!callbackRegistered) {
