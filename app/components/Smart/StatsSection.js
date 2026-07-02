@@ -7,12 +7,13 @@ import { TouchableOpacity, View, Text } from 'react-native';
 import OnlineStatus from './OnlineStatus';
 import { useNavigation } from '@react-navigation/native';
 import styles from './SmartScreenSections/SmartScreen.styles';
-import { MOCKUP_OPTIONS } from './SmartScreenSections/SmartScreen.constants';
+import { MOCKUP_OPTIONS, getIntercomConfigByMockup } from './SmartScreenSections/SmartScreen.constants';
 
 const StatsSection = ({ selectedOption, setSelectedOption, selectedMockup, setSelectedMockup, lanHeaders }) => {
   // Legacy: parent may have headers, but OnlineStatus now generates fresh ones per request.
   const lanAuthToken = lanHeaders?.Authorization ?? lanHeaders?.token ?? null;
   const navigation = useNavigation();
+  const intercomConfig = getIntercomConfigByMockup(selectedMockup);
   return (
     <>
       <View style={[styles.actionDockContainer, { marginTop: 8 }]}>
@@ -45,11 +46,10 @@ const StatsSection = ({ selectedOption, setSelectedOption, selectedMockup, setSe
           style={styles.actionButtonWrapper} 
           onPress={() => navigation.navigate('IntercomScreen', {
             selectedOption,
-            // onsite deviceId: '0C11052C6E92',
-            deviceId: '0C11052C6E79',
-            lanRtspUrl: 'rtsp://admin:Sonic123@192.168.2.114:',
-            // onsite wanRtspUrl: 'rtsp://user:J19IE753w25867v6@35.156.199.213:554/0C11052C6E92',
-            wanRtspUrl: "rtsp://user:nj1770Lx791a70r5@35.156.199.213:554/0C11052C6E79",
+            selectedMockup,
+            deviceId: intercomConfig.deviceId,
+            lanRtspUrl: intercomConfig.lanRtspUrl,
+            wanRtspUrl: intercomConfig.wanRtspUrl,
             LAN_HEADERS: lanHeaders
           })}
           activeOpacity={0.7}

@@ -595,6 +595,23 @@ export const MOCKUP_OPTIONS = {
   MOCKUP_2: 'mockup2',
 };
 
+export const INTERCOM_DEVICE_CONFIG_BY_MOCKUP = {
+  [MOCKUP_OPTIONS.MOCKUP_1]: {
+    deviceId: '0C11052C6E92',
+    lanRtspUrl: 'rtsp://admin:Sonic123@192.168.2.114:',
+    wanRtspUrl: 'rtsp://user:J19IE753w25867v6@35.156.199.213:554/0C11052C6E92',
+  },
+  [MOCKUP_OPTIONS.MOCKUP_2]: {
+    deviceId: '0C11052C6E79',
+    lanRtspUrl: 'rtsp://admin:Sonic123@192.168.2.114:',
+    wanRtspUrl: 'rtsp://user:nj1770Lx791a70r5@35.156.199.213:554/0C11052C6E79',
+  },
+};
+
+export const getIntercomConfigByMockup = (selectedMockup = MOCKUP_OPTIONS.MOCKUP_2) => {
+  return INTERCOM_DEVICE_CONFIG_BY_MOCKUP[selectedMockup] || INTERCOM_DEVICE_CONFIG_BY_MOCKUP[MOCKUP_OPTIONS.MOCKUP_2];
+};
+
 export const getDeviceCategoriesByMockup = (selectedMockup = MOCKUP_OPTIONS.MOCKUP_2) => {
   const source = selectedMockup === MOCKUP_OPTIONS.MOCKUP_1
     ? MOCKUP_1_DEVICE_CATEGORIES

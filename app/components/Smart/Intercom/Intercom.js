@@ -3,23 +3,28 @@ import { View, Text, TouchableOpacity, StyleSheet, Dimensions } from 'react-nati
 import RTSPViewer from './RTSPViewer';
 import Screen from '../../Screen';
 import { useAuth } from '../../../context/AuthContext';
+import { MOCKUP_OPTIONS, getIntercomConfigByMockup } from '../SmartScreenSections/SmartScreen.constants';
 
-const FALLBACK_LAN_RTSP_URL = 'rtsp://admin:Sonic123@192.168.2.114:554/';
-const FALLBACK_WAN_RTSP_URL = 'rtsp://user:nj1770Lx791a70r5@35.156.199.213:554/0C11052C6E79';
-const FALLBACK_DEVICE_ID = '0C11052C6E79';
 const BACKEND_CONTROL_URL = 'https://one-development.soniciot.com/control_devices/';
 
 export default function Intercom({ route }) {
   const params = route?.params || {};
+  const selectedMockup = params.selectedMockup === MOCKUP_OPTIONS.MOCKUP_1
+    ? MOCKUP_OPTIONS.MOCKUP_1
+    : MOCKUP_OPTIONS.MOCKUP_2;
+  const fallbackConfig = getIntercomConfigByMockup(selectedMockup);
+  const residenceId = selectedMockup === MOCKUP_OPTIONS.MOCKUP_1
+    ? 'r45844047053e43d78fe5272c5badbd3a'
+    : 'rabd2c6d2aecc4ce3be11e25b4ecd3c82';
 
   const isLAN = String(params.selectedOption || 'LAN').toLowerCase() === 'lan';
   const selectedOption = isLAN ? 'LAN' : 'WAN';
 
   const { getActiveLanToken, getActiveWanToken } = useAuth();
 
-  const deviceId = params.deviceId || FALLBACK_DEVICE_ID;
-  const lanRtspUrl = params.lanRtspUrl || FALLBACK_LAN_RTSP_URL;
-  const wanRtspUrl = params.wanRtspUrl || FALLBACK_WAN_RTSP_URL;
+  const deviceId = params.deviceId || fallbackConfig.deviceId;
+  const lanRtspUrl = params.lanRtspUrl || fallbackConfig.lanRtspUrl;
+  const wanRtspUrl = params.wanRtspUrl || fallbackConfig.wanRtspUrl;
 
   const uri = useMemo(
     () => (isLAN ? lanRtspUrl : wanRtspUrl),
@@ -65,7 +70,7 @@ export default function Intercom({ route }) {
             id: 'c45e846ca23ab42c9ae469d988ae32a96',
             param: {
               mac: deviceId,
-              residence_id: 'rabd2c6d2aecc4ce3be11e25b4ecd3c82',
+              residence_id: residenceId,
               relay_id: '0',
             },
           }),
