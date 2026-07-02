@@ -19,6 +19,7 @@ export default function CallbackRegistration({
   callbackUrl,       // e.g. http://<your-ip>:8080/
   callbackId,
   listenList,
+  residenceId,
   networkMode = 'LAN',
   run,
   onStatus,          // function(status: 'success' | 'error', data?: any)
@@ -78,6 +79,7 @@ export default function CallbackRegistration({
           param: {
             url: callbackUrl,
             listen_list: listenList,
+            ...(modeLabel === 'WAN' && residenceId ? { residence_id: residenceId } : {}),
           },
         };
 
@@ -132,7 +134,7 @@ export default function CallbackRegistration({
     return () => controller.abort();
   // onStatus intentionally excluded — it's accessed via onStatusRef to prevent
   // the effect from re-firing on every SmartScreen render.
-  }, [run, headersLoading, authHeaders, deviceCallbackUrl, callbackUrl, callbackId, listenList, modeLabel]);
+  }, [run, headersLoading, authHeaders, deviceCallbackUrl, callbackUrl, callbackId, listenList, residenceId, modeLabel]);
 
   return null;
 }

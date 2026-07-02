@@ -172,6 +172,7 @@ export default function SmartScreen({ navigation }) {
   // Initialise from the mode determined at login (LAN or WAN).
   const [selectedOption, setSelectedOption] = useState(networkMode || 'WAN');
   const [selectedMockup, setSelectedMockup] = useState(MOCKUP_OPTIONS.MOCKUP_2);
+  const activeResidenceId = resolveResidenceId(selectedMockup);
   const [deviceCategories, setDeviceCategories] = useState(() => getDeviceCategoriesByMockup(MOCKUP_OPTIONS.MOCKUP_2));
   const [activeTab, setActiveTab] = useState('All Devices');
   const scrollY = useRef(new Animated.Value(0)).current;
@@ -229,11 +230,11 @@ export default function SmartScreen({ navigation }) {
     console.log('[SmartScreen] callbackRegistered:', callbackRegistered);
   }, [selectedOption, callbackRegistered]);
 
-  // Reset callback registration whenever the user switches mode so re-registration
-  // is attempted if they return to LAN.
+  // Reset callback registration whenever transport or mockup changes so registration
+  // always matches the active selection.
   useEffect(() => {
     setCallbackRegistered(false);
-  }, [selectedOption]);
+  }, [selectedOption, selectedMockup]);
 
   useEffect(() => {
     setDeviceCategories(getDeviceCategoriesByMockup(selectedMockup));
@@ -366,7 +367,7 @@ export default function SmartScreen({ navigation }) {
               const wanToken = await getActiveWanToken();
               const { sipToken: wanSipToken, displayName: wanDisplayName } = await fetchWanSipCredentials(
                 wanToken,
-                resolveResidenceId(selectedMockup),
+                activeResidenceId,
               );
               console.log('[SmartScreen] Registering SIP via WAN, display name:', wanDisplayName);
               const res = await Akuvox.registerSip(wanSipToken, wanDisplayName);
@@ -473,8 +474,6 @@ export default function SmartScreen({ navigation }) {
         if (payload?.notice === 'device_listen_notice' && payload?.action === 'sync') {
           const activeToken = await getActiveWanToken();
           
-          const activeResidenceId = resolveResidenceId(selectedMockup);
-
           // Radically optimized single-fetch pipeline leveraging the augmented get_device_list endpoint. 
           // Retreives the global house natively in under 150ms!
           const wanBody = {
@@ -581,7 +580,7 @@ export default function SmartScreen({ navigation }) {
     return () => {
       ws.close();
     };
-  }, [selectedOption, selectedMockup, handleRequest, getActiveWanToken]);
+  }, [selectedOption, selectedMockup, activeResidenceId, handleRequest, getActiveWanToken]);
 
   // Stable callback-registration status handler — must not be an inline arrow so
   // CallbackRegistration's run-effect dep array stays stable between renders.
@@ -794,6 +793,7 @@ export default function SmartScreen({ navigation }) {
           callbackUrl={callbackUrl}
           callbackId="c45e846ca23ab42c9ae469d988ae32a96"
           listenList={['device']}
+          residenceId={activeResidenceId}
           networkMode={selectedOption}
           run={true}
           onStatus={handleCallbackStatus}
