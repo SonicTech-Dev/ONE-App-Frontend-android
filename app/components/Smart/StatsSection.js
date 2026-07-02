@@ -20,7 +20,7 @@ const StatsSection = ({ selectedOption, setSelectedOption, selectedMockup, setSe
         {/* Contacts */}
         <TouchableOpacity 
           style={styles.actionButtonWrapper} 
-          onPress={() => navigation.navigate('SdkTest')}
+          onPress={() => navigation.navigate('SdkTest', { selectedMockup, selectedOption })}
           activeOpacity={0.7}
         >
           <View style={[styles.actionButtonIcon, { backgroundColor: '#f2ebff' }]}>

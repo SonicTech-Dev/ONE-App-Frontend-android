@@ -16,11 +16,13 @@ export default function ActiveCallScreen({ route, navigation }) {
   const [currentDialIndex, setCurrentDialIndex] = useState(
     Number.isInteger(dialTargetIndex) && dialTargetIndex >= 0 ? dialTargetIndex : 0
   );
+  const [videoRenderNonce, setVideoRenderNonce] = useState(0);
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const closingRef = useRef(false);
   const retryingRef = useRef(false);
   const cancelRequestedRef = useRef(false);
   const retryTimeoutRef = useRef(null);
+  const rebindTimeoutRef = useRef(null);
 
   const closeScreen = () => {
     if (closingRef.current) {
@@ -30,6 +32,11 @@ export default function ActiveCallScreen({ route, navigation }) {
     if (retryTimeoutRef.current) {
       clearTimeout(retryTimeoutRef.current);
       retryTimeoutRef.current = null;
+    }
+
+    if (rebindTimeoutRef.current) {
+      clearTimeout(rebindTimeoutRef.current);
+      rebindTimeoutRef.current = null;
     }
 
     closingRef.current = true;
@@ -76,6 +83,9 @@ export default function ActiveCallScreen({ route, navigation }) {
     // Listen for connection
     const outgoingCallCreatedSub = eventEmitter.addListener('onOutgoingCallCreated', (data) => {
       if (data?.callId) {
+        // Clear old surfaces before new outgoing session starts.
+        setActiveCallId(null);
+        setVideoRenderNonce((prev) => prev + 1);
         setSessionCallId(data.callId);
       }
     });
@@ -86,6 +96,17 @@ export default function ActiveCallScreen({ route, navigation }) {
         if (data.callId !== activeCallId) {
           setActiveCallId(data.callId); // Keep callId synced even if route params were stale
         }
+        // Force native video surfaces to remount for each established session.
+        setVideoRenderNonce((prev) => prev + 1);
+
+        // One delayed rebind catches SDK surfaces that become available slightly later.
+        if (rebindTimeoutRef.current) {
+          clearTimeout(rebindTimeoutRef.current);
+        }
+        rebindTimeoutRef.current = setTimeout(() => {
+          setVideoRenderNonce((prev) => prev + 1);
+          rebindTimeoutRef.current = null;
+        }, 500);
       }
     });
 
@@ -96,13 +117,18 @@ export default function ActiveCallScreen({ route, navigation }) {
         retryTimeoutRef.current = null;
       }
 
+      if (rebindTimeoutRef.current) {
+        clearTimeout(rebindTimeoutRef.current);
+        rebindTimeoutRef.current = null;
+      }
+
       if (cancelRequestedRef.current) {
         closeScreen();
         return;
       }
 
       const reason = String(data?.reason || '');
-      const isTemporaryFailure = /temporarily unavailable|not found|busy here/i.test(reason);
+      const isTemporaryFailure = /temporarily unavailable|not found|busy here|request timeout|decline|declined|not acceptable|forbidden|server internal error|service unavailable/i.test(reason);
       const targets = Array.isArray(dialTargets) ? dialTargets : [];
       const nextIndex = currentDialIndex + 1;
 
@@ -133,6 +159,10 @@ export default function ActiveCallScreen({ route, navigation }) {
       if (retryTimeoutRef.current) {
         clearTimeout(retryTimeoutRef.current);
         retryTimeoutRef.current = null;
+      }
+      if (rebindTimeoutRef.current) {
+        clearTimeout(rebindTimeoutRef.current);
+        rebindTimeoutRef.current = null;
       }
       outgoingCallCreatedSub.remove();
       callEstablishedSub.remove();
@@ -180,7 +210,12 @@ export default function ActiveCallScreen({ route, navigation }) {
     <View style={styles.container}>
       {/* Remote Video Stream Fullscreen */}
       {activeCallId ? (
-        <VideoCallView type="remote" callId={activeCallId} style={styles.remoteVideo} />
+        <VideoCallView
+          key={`remote-${activeCallId}-${videoRenderNonce}`}
+          type="remote"
+          callId={activeCallId}
+          style={styles.remoteVideo}
+        />
       ) : (
         <View style={styles.dialingContainer}>
           <Animated.View style={[styles.avatarGlow, { transform: [{ scale: pulseAnim }] }]} />
@@ -194,7 +229,12 @@ export default function ActiveCallScreen({ route, navigation }) {
       {/* Picture-in-Picture Local Video */}
       {activeCallId && (
         <View style={styles.pipContainer}>
-          <VideoCallView type="local" callId={activeCallId} style={styles.localVideo} />
+          <VideoCallView
+            key={`local-${activeCallId}-${videoRenderNonce}`}
+            type="local"
+            callId={activeCallId}
+            style={styles.localVideo}
+          />
         </View>
       )}
 

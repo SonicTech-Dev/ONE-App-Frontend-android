@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { MOCKUP_OPTIONS } from '../components/Smart/SmartScreenSections/SmartScreen.constants';
 const { Akuvox } = NativeModules;
 
 /**
@@ -23,17 +24,31 @@ const { Akuvox } = NativeModules;
  * Buttons for init/register are removed — registration happens automatically in SmartScreen.
  */
 
-const apiResult = {
+const API_RESULT_MOCKUP_1 = {
   family_name: 'One-Dev Mockup-Flat',
   sip_group: '1191000500',
   devices: [
-    //onsite { device_id: 'd4f54a92bea2a440c8a6a23d0b636dcf7', device_name: 'HyPanel Supreme', mac: '0C110500755C', sip_wan: '1192101703', sip_lan: '1000' },
+    { device_id: 'd4f54a92bea2a440c8a6a23d0b636dcf7', device_name: 'HyPanel Supreme', mac: '0C110500755C', sip_wan: '1192101703', sip_lan: '1000' },
+    { device_id: 'd1b001e5ddcf24d65a9d1c6ad23df43ba', device_name: 'Hypanel Lux', mac: '0C11052BF1CF', sip_wan: '1192101705', sip_lan: '1003' },
+    { device_id: 'd9a69e144b34c47ea822169672c0fd40d', device_name: 'Hypanel KeyPlus  1 on M1', mac: '0C110527CAAC', sip_wan: '1192102163', sip_lan: '1001' },
+    { device_id: 'd7ed72241e59342d29daffc0911503029', device_name: 'Hypanel KeyPlus 2 in M1', mac: '0C110527CA8F', sip_wan: '1192102164', sip_lan: '1002' },
+  ],
+  accounts: [
+    { account_id: 'a9b41de81c3284515a5e833d53412fe14', sip_wan: '1192101702', sip_lan: '1192101702', account_name: 'fayis@sonictech.ae', first_name: 'Laguna Mockup', last_name: 'One-Development', email: 'fayis@sonictech.ae', main_sip: '1192101504' },
+    { account_id: 'a2a340656d43745fdafce231cc9d1b2d1', sip_wan: '1192102110', sip_lan: '1192102110', account_name: 'marwan@sonictech.ae', first_name: 'Marwan', last_name: 'Khater', email: 'marwan@sonictech.ae', main_sip: '1467100107' },
+  ],
+  akuvox_devices: [
+    { mac: '0C11052C6E92', device_name: 'Intercom R29', sip_wan: '1192101722', sip_lan: '1004' },
+  ],
+};
+
+const API_RESULT_MOCKUP_2 = {
+  family_name: 'One-Dev Mockup-Flat',
+  sip_group: '1191000500',
+  devices: [
     { device_id: 'd03852d726b074d77a7d658e7fac7d3b6', device_name: 'HyPanel Supreme', mac: '0C110500755C', sip_wan: '1192102080', sip_lan: '1000' },
-    //onsite { device_id: 'd1b001e5ddcf24d65a9d1c6ad23df43ba', device_name: 'Hypanel Lux', mac: '0C11052BF1CF', sip_wan: '1192101705', sip_lan: '1003' },
     { device_id: 'd394ddaa179d0469ebe4b7c710bfbe5e0', device_name: 'Hypanel Lux', mac: '0C11052BF1CF', sip_wan: '1192102082', sip_lan: '1037' },
-    //onsite { device_id: 'd9a69e144b34c47ea822169672c0fd40d', device_name: 'Hypanel KeyPlus  1 on M1', mac: '0C110527CAAC', sip_wan: '1192102163', sip_lan: '1001' },
     { device_id: 'd6909df0aa38444ba8e11ce1f55e3cb9d', device_name: 'Hypanel KeyPlus  Bedside', mac: '0C110527CAAC', sip_wan: '1192102081', sip_lan: '1035' },
-    //onsite { device_id: 'd7ed72241e59342d29daffc0911503029', device_name: 'Hypanel KeyPlus 2 in M1', mac: '0C110527CA8F', sip_wan: '1192102164', sip_lan: '1002' },
     { device_id: 'd715ca4ce814c436ba3cb8a88702170c5', device_name: 'Hypanel KeyPlus Kitchen', mac: '0C110527CA8F', sip_wan: '1192102083', sip_lan: '1036' },
   ],
   accounts: [
@@ -41,12 +56,11 @@ const apiResult = {
     { account_id: 'a2a340656d43745fdafce231cc9d1b2d1', sip_wan: '1192102110', sip_lan: '1192102110', account_name: 'marwan@sonictech.ae', first_name: 'Marwan', last_name: 'Khater', email: 'marwan@sonictech.ae', main_sip: '1467100107' },
   ],
   akuvox_devices: [
-    //onsite { mac: '0C11052C6E92', device_name: 'Intercom R29', sip_wan: '1192101722', sip_lan: '1004' },
     { mac: '0C11052C6E79', device_name: 'Intercom R29', sip_wan: '1192102367', sip_lan: '1038' },
   ],
 };
 
-const getContacts = () => {
+const getContacts = (apiResult) => {
   const contacts = [];
   apiResult.devices.forEach(device => {
     contacts.push({
@@ -95,13 +109,21 @@ async function requestPermissionsIfNeeded() {
   return true;
 }
 
-export default function SdkContactScreen({ navigation }) {
+export default function SdkContactScreen({ navigation, route }) {
   const [sipStatus, setSipStatus] = useState(null);
   const [selectedContact, setSelectedContact] = useState(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [registeredTransport, setRegisteredTransport] = useState(null); // 'wan' | 'lan' | null
 
-  const contacts = getContacts();
+  const selectedMockup = route?.params?.selectedMockup === MOCKUP_OPTIONS.MOCKUP_1
+    ? MOCKUP_OPTIONS.MOCKUP_1
+    : MOCKUP_OPTIONS.MOCKUP_2;
+  const selectedOption = String(route?.params?.selectedOption || '').toUpperCase() === 'LAN' ? 'LAN' : 'WAN';
+  const selectedTransport = selectedOption.toLowerCase();
+  const apiResult = selectedMockup === MOCKUP_OPTIONS.MOCKUP_1
+    ? API_RESULT_MOCKUP_1
+    : API_RESULT_MOCKUP_2;
+  const contacts = getContacts(apiResult);
 
   // ------- Keep sipStatus in sync with the native SIP line -------
   // Subscribe to onSipRegStatus events so we get live updates
@@ -139,6 +161,10 @@ export default function SdkContactScreen({ navigation }) {
     }
   };
 
+  const isTransportReady = () => {
+    return sipStatus === 2 && registeredTransport === selectedTransport;
+  };
+
   // Keep transport synced when this screen regains focus (after user switches LAN/WAN in SmartScreen).
   useFocusEffect(
     React.useCallback(() => {
@@ -147,6 +173,33 @@ export default function SdkContactScreen({ navigation }) {
       Akuvox.getSipStatus().then(setSipStatus).catch(() => {});
     }, [])
   );
+
+  useEffect(() => {
+    let mounted = true;
+    let timer = null;
+
+    const syncExpectedTransport = async () => {
+      try {
+        const storedTransport = await AsyncStorage.getItem('registeredTransport');
+        const currentSipStatus = await Akuvox.getSipStatus();
+        if (!mounted) return;
+
+        setSipStatus(currentSipStatus);
+        if (storedTransport === 'lan' || storedTransport === 'wan') {
+          setRegisteredTransport(storedTransport);
+        }
+      } catch (_) {}
+    };
+
+    // Quick resync loop when entering SdkTest helps avoid calling during mode switches.
+    syncExpectedTransport();
+    timer = setInterval(syncExpectedTransport, 1500);
+
+    return () => {
+      mounted = false;
+      if (timer) clearInterval(timer);
+    };
+  }, []);
 
   // Optionally poll or fetch SIP status to show user feedback
   useEffect(() => {
@@ -173,7 +226,9 @@ export default function SdkContactScreen({ navigation }) {
   const getSipCandidatesForContact = (contact) => {
     if (!contact) return [];
 
-    if (registeredTransport === 'lan') {
+    const effectiveTransport = registeredTransport || selectedTransport;
+
+    if (effectiveTransport === 'lan') {
       return uniqueSipTargets([
         contact.sip_lan,
         contact.sip_wan,
@@ -183,12 +238,13 @@ export default function SdkContactScreen({ navigation }) {
       ]);
     }
 
-    if (registeredTransport === 'wan') {
+    if (effectiveTransport === 'wan') {
       // sip_wan first — devices have no main_sip so it must not be the leading candidate
       return uniqueSipTargets([
         contact.sip_wan,
-        contact.main_sip,
         contact.sip_group,
+        contact.main_sip,
+        contact.sip_lan,
         contact.sip,
       ]);
     }
@@ -204,8 +260,16 @@ export default function SdkContactScreen({ navigation }) {
 
   // Contact Call Actions
   const handleMakeAudioCall = async (contact) => {
-    if (!registeredTransport) {
+    const effectiveTransport = registeredTransport || selectedTransport;
+    if (!effectiveTransport) {
       Alert.alert('Not Registered', 'Please go to Smart page and choose LAN or WAN to register SIP.');
+      return;
+    }
+    if (!isTransportReady()) {
+      Alert.alert(
+        'Transport Not Ready',
+        `Expected ${selectedTransport.toUpperCase()} registration. Current: ${registeredTransport ? registeredTransport.toUpperCase() : 'none'}. Please wait a moment and try again.`
+      );
       return;
     }
     if (sipStatus !== 2) {
@@ -228,7 +292,7 @@ export default function SdkContactScreen({ navigation }) {
     }
 
     console.log('[Contacts] Audio call target:', {
-      transport: registeredTransport,
+      transport: effectiveTransport,
       sipToCall,
       sipCandidates,
       contact: contact?.name,
@@ -248,8 +312,16 @@ export default function SdkContactScreen({ navigation }) {
   };
 
   const handleMakeVideoCall = async (contact) => {
-    if (!registeredTransport) {
+    const effectiveTransport = registeredTransport || selectedTransport;
+    if (!effectiveTransport) {
       Alert.alert('Not Registered', 'Please go to Smart page and choose LAN or WAN to register SIP.');
+      return;
+    }
+    if (!isTransportReady()) {
+      Alert.alert(
+        'Transport Not Ready',
+        `Expected ${selectedTransport.toUpperCase()} registration. Current: ${registeredTransport ? registeredTransport.toUpperCase() : 'none'}. Please wait a moment and try again.`
+      );
       return;
     }
     if (sipStatus !== 2) {
@@ -272,7 +344,7 @@ export default function SdkContactScreen({ navigation }) {
     }
 
     console.log('[Contacts] Video call target:', {
-      transport: registeredTransport,
+      transport: effectiveTransport,
       sipToCall,
       sipCandidates,
       contact: contact?.name,
@@ -392,6 +464,9 @@ export default function SdkContactScreen({ navigation }) {
           </Text>
         </View>
       </View>
+      <Text style={styles.transportHint}>
+        Selected: {selectedTransport.toUpperCase()} | Active: {registeredTransport ? registeredTransport.toUpperCase() : 'None'}
+      </Text>
 
       <FlatList
         data={contacts}
@@ -518,6 +593,13 @@ const styles = StyleSheet.create({
   separator: {
     height: 1,
     backgroundColor: 'transparent', 
+  transportHint: {
+    marginTop: 6,
+    marginHorizontal: 16,
+    color: '#6e67a5',
+    fontSize: 12,
+    fontWeight: '600',
+  },
   },
   sipStatus: {
     marginTop: 10,
