@@ -168,6 +168,7 @@ export default function ACModal({
   visible,
   onClose,
   device,
+  selectedOption = 'WAN',
   deviceStatus,
   onTurnOn,
   onTurnOff,
@@ -211,6 +212,46 @@ export default function ACModal({
       .join(' ');
   };
 
+  const normalizeState = (state) => String(state || '').trim().toLowerCase();
+
+  const resolvePreferredAbilityId = () => {
+    const mode = String(selectedOption || 'WAN').toLowerCase();
+    return mode === 'lan' ? device?.lan?.ability_id : device?.wan?.ability_id;
+  };
+
+  const isClimateLike = (ability = {}) => {
+    const abilityType = normalizeState(ability?.ability_type);
+    const abilityName = normalizeState(ability?.ability_name);
+    const abilityId = normalizeState(ability?.ability_id);
+    const attr = ability?.attribute || {};
+
+    if (abilityType.includes('climate') || abilityType.includes('hvac')) return true;
+    if (abilityName.includes('climate') || abilityName.includes('hvac') || abilityName.includes('air')) return true;
+    if (abilityId.includes('climate') || abilityId.includes('hvac') || abilityId.includes('air')) return true;
+
+    return (
+      typeof attr.preset_temperature !== 'undefined' ||
+      typeof attr.target_temperature !== 'undefined' ||
+      typeof attr.hvac_mode === 'string' ||
+      typeof attr.fan_mode === 'string' ||
+      Array.isArray(attr.support_hvac_mode) ||
+      Array.isArray(attr.support_fan_mode)
+    );
+  };
+
+  const findClimateAbility = (abilities = []) => {
+    const preferredAbilityId = resolvePreferredAbilityId();
+    if (preferredAbilityId) {
+      const exact = abilities.find((a) => a?.ability_id === preferredAbilityId);
+      if (exact) return exact;
+    }
+
+    const byClimate = abilities.find((a) => isClimateLike(a));
+    if (byClimate) return byClimate;
+
+    return abilities[0] || null;
+  };
+
   // Update display state from deviceStatus when it changes
   useEffect(() => {
     if (!deviceStatus || !deviceStatus.result) {
@@ -219,29 +260,35 @@ export default function ACModal({
     }
     setLoading(false);
     const abilities = deviceStatus.result.abilities || [];
-    const climateAbility = abilities.find(
-      (a) => a.ability_type === 'climate' || a.ability_name === 'climate'
-    );
-    if (climateAbility && climateAbility.attribute) {
-      setIsOn(climateAbility.state === 'on');
-      if (typeof climateAbility.attribute.preset_temperature !== 'undefined') {
-        setTemp(Number(climateAbility.attribute.preset_temperature));
+    const climateAbility = findClimateAbility(abilities);
+    if (climateAbility) {
+      const climateAttributes = climateAbility.attribute || {};
+      const normalizedState = normalizeState(climateAbility.state);
+      if (normalizedState === 'on' || normalizedState === 'off') {
+        setIsOn(normalizedState === 'on');
       }
-      if (typeof climateAbility.attribute.hvac_mode === 'string') {
-        setHVACMode(climateAbility.attribute.hvac_mode);
+
+      const nextTemperature = typeof climateAttributes.preset_temperature !== 'undefined'
+        ? climateAttributes.preset_temperature
+        : climateAttributes.target_temperature;
+      if (typeof nextTemperature !== 'undefined') {
+        setTemp(Number(nextTemperature));
       }
-      if (typeof climateAbility.attribute.fan_mode === 'string') {
-        setFanSpeed(climateAbility.attribute.fan_mode);
+      if (typeof climateAttributes.hvac_mode === 'string') {
+        setHVACMode(climateAttributes.hvac_mode);
       }
-      if (Array.isArray(climateAbility.attribute.support_hvac_mode)) {
-        const acModes = climateAbility.attribute.support_hvac_mode.map((mode) => ({
+      if (typeof climateAttributes.fan_mode === 'string') {
+        setFanSpeed(climateAttributes.fan_mode);
+      }
+      if (Array.isArray(climateAttributes.support_hvac_mode)) {
+        const acModes = climateAttributes.support_hvac_mode.map((mode) => ({
           label: prettyLabel(mode),
           value: mode,
         }));
         setSupportHVACModes(acModes);
       }
-      if (Array.isArray(climateAbility.attribute.support_fan_mode)) {
-        const fanModes = climateAbility.attribute.support_fan_mode.map((mode) => ({
+      if (Array.isArray(climateAttributes.support_fan_mode)) {
+        const fanModes = climateAttributes.support_fan_mode.map((mode) => ({
           label: prettyLabel(mode),
           value: mode,
         }));

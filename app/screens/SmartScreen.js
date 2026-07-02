@@ -193,6 +193,10 @@ export default function SmartScreen({ navigation }) {
   // Ref so the onSipRegStatus event handler can read selectedOption without re-subscribing.
   const selectedOptionRef = useRef(selectedOption);
   useEffect(() => { selectedOptionRef.current = selectedOption; }, [selectedOption]);
+  const selectedDeviceRef = useRef(selectedDevice);
+  const modalVisibleRef = useRef(modalVisible);
+  useEffect(() => { selectedDeviceRef.current = selectedDevice; }, [selectedDevice]);
+  useEffect(() => { modalVisibleRef.current = modalVisible; }, [modalVisible]);
 
   // Tracks local controls to suppress callback-echo updates.
   const selfControlSuppressRef = useRef(new Map());
@@ -452,6 +456,54 @@ export default function SmartScreen({ navigation }) {
           }),
         }));
       });
+
+      const selected = selectedDeviceRef.current;
+      if (modalVisibleRef.current && selected) {
+        const selectedChannel = selected?.[mode];
+        if (selectedChannel?.device_id === deviceId) {
+          const selectedAbilityId = selectedChannel?.ability_id;
+          const modalAbility = abilities.find((ability) => {
+            return !selectedAbilityId || ability?.ability_id === selectedAbilityId;
+          }) || abilities[0];
+
+          if (modalAbility) {
+            setSelectedDeviceStatus((prevStatus) => {
+              const prevResult = prevStatus?.result || {};
+              const prevAbilities = Array.isArray(prevResult.abilities) ? prevResult.abilities : [];
+              const nextAbilities = [...prevAbilities];
+
+              const modalAbilityId = modalAbility?.ability_id;
+              const abilityIndex = modalAbilityId
+                ? nextAbilities.findIndex((ability) => ability?.ability_id === modalAbilityId)
+                : -1;
+
+              if (abilityIndex >= 0) {
+                nextAbilities[abilityIndex] = {
+                  ...nextAbilities[abilityIndex],
+                  ...modalAbility,
+                  attribute: {
+                    ...(nextAbilities[abilityIndex]?.attribute || {}),
+                    ...(modalAbility?.attribute || {}),
+                  },
+                };
+              } else {
+                nextAbilities.push(modalAbility);
+              }
+
+              return {
+                ...(prevStatus || {}),
+                result: {
+                  ...prevResult,
+                  device_id: prevResult.device_id || deviceId,
+                  device_name: prevResult.device_name || selected?.title || '',
+                  abilities: nextAbilities,
+                  online: typeof prevResult.online === 'boolean' ? prevResult.online : true,
+                },
+              };
+            });
+          }
+        }
+      }
     }
   }, [shouldSuppressSelfCallback]);
 
@@ -610,6 +662,33 @@ export default function SmartScreen({ navigation }) {
 
   const handleTabChange = (tab) => setActiveTab(tab);
 
+  const refreshModalDeviceStatus = async (
+    device,
+    headersOverride = null,
+    options = {},
+  ) => {
+    const { retries = 1, delayMs = 350 } = options;
+    if (!modalVisible || !device) return;
+    const mode = selectedOption.toLowerCase();
+    const dev = device[mode];
+    if (!dev) return;
+
+    const headers = headersOverride || await getHeaders();
+    for (let attempt = 0; attempt < retries; attempt += 1) {
+      await deviceStatus(dev.device_id, selectedOption, setSelectedDeviceStatus, headers, {
+        deviceTitle: device?.title,
+        abilityId: dev?.ability_id,
+        strictDeviceId: strictStatusLookup,
+        selectedMockup,
+      });
+
+      if (attempt < retries - 1) {
+        // Device state propagation can lag control responses; poll briefly to keep modal in sync.
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+    }
+  };
+
   // Always rebuild LAN headers right before status requests
   useEffect(() => {
     if (modalVisible && selectedDevice) {
@@ -632,7 +711,7 @@ export default function SmartScreen({ navigation }) {
     } else {
       setSelectedDeviceStatus(null);
     }
-  }, [modalVisible, selectedDevice, selectedOption, strictStatusLookup]);
+  }, [modalVisible, selectedDevice, selectedOption, strictStatusLookup, selectedMockup]);
 
   const handleToggle = async (device, newControl) => {
     const mode = selectedOption.toLowerCase();
@@ -655,15 +734,10 @@ export default function SmartScreen({ navigation }) {
     const command = dev.commandPair[newControl];
     const headers = await getHeaders();
     markSelfControl(mode, dev.device_id, dev.ability_id);
-    controlDevice(dev.device_id, dev.ability_id, command, null, selectedOption, headers, {
+    await controlDevice(dev.device_id, dev.ability_id, command, null, selectedOption, headers, {
       selectedMockup,
     });
-    deviceStatus(dev.device_id, selectedOption, setSelectedDeviceStatus, headers, {
-      deviceTitle: device?.title,
-      abilityId: dev?.ability_id,
-      strictDeviceId: strictStatusLookup,
-      selectedMockup,
-    });
+    await refreshModalDeviceStatus(device, headers, { retries: 3, delayMs: 450 });
   };
 
   const handleSetPosition = async (device, position) => {
@@ -679,9 +753,10 @@ export default function SmartScreen({ navigation }) {
       : { position_percent: position };
     const headers = await getHeaders();
     markSelfControl(mode, dev.device_id, dev.ability_id);
-    controlDevice(dev.device_id, dev.ability_id, command, attribute, selectedOption, headers, {
+    await controlDevice(dev.device_id, dev.ability_id, command, attribute, selectedOption, headers, {
       selectedMockup,
     });
+    await refreshModalDeviceStatus(device, headers, { retries: 3, delayMs: 450 });
   };
 
   const handleSetTemperature = async (device, temperature) => {
@@ -692,14 +767,15 @@ export default function SmartScreen({ navigation }) {
       return;
     }
     const attribute = mode === 'lan'
-      ? { target_temperature: temperature }
+      ? { target_temperature: temperature, preset_temperature: temperature }
       : { preset_temperature: temperature };
     const command = dev.commandPair['on'];
     const headers = await getHeaders();
     markSelfControl(mode, dev.device_id, dev.ability_id);
-    controlDevice(dev.device_id, dev.ability_id, command, attribute, selectedOption, headers, {
+    await controlDevice(dev.device_id, dev.ability_id, command, attribute, selectedOption, headers, {
       selectedMockup,
     });
+    await refreshModalDeviceStatus(device, headers, { retries: 3, delayMs: 450 });
   };
 
   const handleSetHVACMode = async (device, HVACmode, temperature) => {
@@ -709,15 +785,14 @@ export default function SmartScreen({ navigation }) {
       Alert.alert('Not supported', `This device cannot be controlled via ${selectedOption}.`);
       return;
     }
-    const attribute = mode === 'lan'
-      ? { target_temperature: temperature }
-      : { hvac_mode: HVACmode };
+    const attribute = { hvac_mode: HVACmode };
     const command = dev.commandPair['on'];
     const headers = await getHeaders();
     markSelfControl(mode, dev.device_id, dev.ability_id);
-    controlDevice(dev.device_id, dev.ability_id, command, attribute, selectedOption, headers, {
+    await controlDevice(dev.device_id, dev.ability_id, command, attribute, selectedOption, headers, {
       selectedMockup,
     });
+    await refreshModalDeviceStatus(device, headers, { retries: 3, delayMs: 450 });
   };
 
   const handleSetFanSpeed = async (device, speed, temperature) => {
@@ -727,15 +802,14 @@ export default function SmartScreen({ navigation }) {
       Alert.alert('Not supported', `This device cannot be controlled via ${selectedOption}.`);
       return;
     }
-    const attribute = mode === 'lan'
-      ? { target_temperature: temperature }
-      : { fan_mode: speed };
+    const attribute = { fan_mode: speed };
     const command = dev.commandPair['on'];
     markSelfControl(mode, dev.device_id, dev.ability_id);
     const headers = await getHeaders();
-    controlDevice(dev.device_id, dev.ability_id, command, attribute, selectedOption, headers, {
+    await controlDevice(dev.device_id, dev.ability_id, command, attribute, selectedOption, headers, {
       selectedMockup,
     });
+    await refreshModalDeviceStatus(device, headers, { retries: 3, delayMs: 450 });
   };
 
   const handleSetBrightness = async (device, Brightness) => {
@@ -751,9 +825,10 @@ export default function SmartScreen({ navigation }) {
     markSelfControl(mode, dev.device_id, dev.ability_id);
     const command = dev.commandPair['on'];
     const headers = await getHeaders();
-    controlDevice(dev.device_id, dev.ability_id, command, attribute, selectedOption, headers, {
+    await controlDevice(dev.device_id, dev.ability_id, command, attribute, selectedOption, headers, {
       selectedMockup,
     });
+    await refreshModalDeviceStatus(device, headers, { retries: 3, delayMs: 450 });
   };
 
   // Build callback URL strictly with IPv4. Fallback to prior static IPv4 if detection fails.

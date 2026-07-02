@@ -96,6 +96,7 @@ export default function DeviceModals({
         visible={modalVisible}
         onClose={() => setModalVisible(false)}
         device={selectedDevice}
+      selectedOption={selectedOption}
         deviceStatus={deviceStatus}
         isOn={selectedDevice.isOn}
         onTurnOn={() => handleToggle(selectedDevice, 'on')}
