@@ -270,13 +270,13 @@ export const MOCKUP_1_DEVICE_CATEGORIES = [
         items: [
           { title: 'AC', location: 'Entrance', status: 'off', color: '#ff0000ff', isOn: false, iconName: 'air-conditioner' , library: 'MaterialCommunityIcons',
           lan: {
-            device_id: '0c11052bf1cf_120_11',
-            ability_id: 'climate.0c11052bf1cf_120_11',
+            device_id: '0c110500755c_130_11',
+            ability_id: 'climate.0c110500755c_130_11',
             commandPair: { on: 'turn_on', off: 'turn_off' }
           },
           wan: {
-            device_id: 'd0bacccc6f97a44a9891770111e89d937',
-            ability_id: 'ea1d6076ccc114990a615c04a04db8b53',
+            device_id: 'd7a5eac6564db4b33968830122b2818e3',
+            ability_id: 'ebee0022cbed0457e8d746c48a2dd7205',
             commandPair: { on: 'turn_on', off: 'turn_off' }
           }},
           { title: 'SpotLight Entrance', location: 'Entrance', status: 'off', color: '#ff0000ff', isOn: false, iconName: 'lightbulb-on-outline' , library: 'MaterialCommunityIcons',

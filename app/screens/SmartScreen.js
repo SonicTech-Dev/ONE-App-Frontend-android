@@ -25,9 +25,15 @@ const WAN_CALLBACK_CONFIG_URL = `${BACKEND_URL}/api/register_callback/wan/`;
 
 // SIP credential API constants
 const SIP_REQUEST_ID = 'c45e846ca23ab42c9ae469d988ae32a96';
-const SIP_RESIDENCE_ID = 'rabd2c6d2aecc4ce3be11e25b4ecd3c82';
+const SIP_DEFAULT_RESIDENCE_ID = 'rabd2c6d2aecc4ce3be11e25b4ecd3c82';
 
-async function fetchWanSipCredentials(wanToken) {
+function resolveResidenceId(selectedMockup = MOCKUP_OPTIONS.MOCKUP_2) {
+  return selectedMockup === MOCKUP_OPTIONS.MOCKUP_1
+    ? 'r45844047053e43d78fe5272c5badbd3a'
+    : SIP_DEFAULT_RESIDENCE_ID;
+}
+
+async function fetchWanSipCredentials(wanToken, residenceId = SIP_DEFAULT_RESIDENCE_ID) {
   const headers = {
     'Content-Type': 'application/json',
     'Accept': 'application/json',
@@ -55,7 +61,7 @@ async function fetchWanSipCredentials(wanToken) {
     body: JSON.stringify({
       command: 'get_contact_list',
       id: SIP_REQUEST_ID,
-      param: { residence_id: SIP_RESIDENCE_ID, show_ability: true },
+      param: { residence_id: residenceId, show_ability: true },
     }),
   });
   if (!contactRes.ok) {
@@ -358,7 +364,10 @@ export default function SmartScreen({ navigation }) {
               setSipRegistrationStatus(null);
               console.log('[SmartScreen] Fetching WAN SIP credentials...');
               const wanToken = await getActiveWanToken();
-              const { sipToken: wanSipToken, displayName: wanDisplayName } = await fetchWanSipCredentials(wanToken);
+              const { sipToken: wanSipToken, displayName: wanDisplayName } = await fetchWanSipCredentials(
+                wanToken,
+                resolveResidenceId(selectedMockup),
+              );
               console.log('[SmartScreen] Registering SIP via WAN, display name:', wanDisplayName);
               const res = await Akuvox.registerSip(wanSipToken, wanDisplayName);
               console.log('[SmartScreen] WAN register result:', res);
@@ -464,14 +473,14 @@ export default function SmartScreen({ navigation }) {
         if (payload?.notice === 'device_listen_notice' && payload?.action === 'sync') {
           const activeToken = await getActiveWanToken();
           
-          const RESIDENCE_ID = 'rabd2c6d2aecc4ce3be11e25b4ecd3c82';
+          const activeResidenceId = resolveResidenceId(selectedMockup);
 
           // Radically optimized single-fetch pipeline leveraging the augmented get_device_list endpoint. 
           // Retreives the global house natively in under 150ms!
           const wanBody = {
             command: 'get_device_list',
             id: 'c45e846ca23ab42c9ae469d988ae32a96',
-            param: { residence_id: RESIDENCE_ID, show_ability: true },
+            param: { residence_id: activeResidenceId, show_ability: true },
           };
           
           try {
@@ -572,7 +581,7 @@ export default function SmartScreen({ navigation }) {
     return () => {
       ws.close();
     };
-  }, [selectedOption, handleRequest, getActiveWanToken]);
+  }, [selectedOption, selectedMockup, handleRequest, getActiveWanToken]);
 
   // Stable callback-registration status handler — must not be an inline arrow so
   // CallbackRegistration's run-effect dep array stays stable between renders.
