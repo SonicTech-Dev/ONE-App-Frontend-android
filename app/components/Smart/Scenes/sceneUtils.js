@@ -183,6 +183,169 @@ export const buildSceneInfoRequest = ({
   };
 };
 
+const getPayloadArray = (payload) => {
+  const candidates = [
+    payload?.result,
+    payload?.result?.devices,
+    payload?.result?.data,
+    payload?.devices,
+    payload?.data,
+  ];
+
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) return candidate;
+    if (Array.isArray(candidate?.devices)) return candidate.devices;
+    if (Array.isArray(candidate?.abilities)) return candidate.abilities;
+    if (Array.isArray(candidate?.actions)) return candidate.actions;
+    if (Array.isArray(candidate?.triggers)) return candidate.triggers;
+    if (Array.isArray(candidate?.conditions)) return candidate.conditions;
+  }
+
+  return [];
+};
+
+export const extractDeviceListOptions = (payload) => {
+  const rawDevices = getPayloadArray(payload);
+  const options = [];
+
+  const addDevice = (device, parent = null) => {
+    if (!device || typeof device !== 'object') return;
+    const deviceId = device.device_id || device.deviceId || parent?.device_id;
+    if (!deviceId) return;
+
+    const name = device.device_name || device.deviceName || device.name || device.title
+      || parent?.device_name || parent?.deviceName || 'Device';
+    const abilities = Array.isArray(device.abilities) ? device.abilities : [];
+    options.push({
+      label: name,
+      value: String(deviceId),
+      device_id: String(deviceId),
+      device_name: name,
+      abilities,
+    });
+
+    (Array.isArray(device.sub_devices) ? device.sub_devices : []).forEach((child) => addDevice(child, device));
+  };
+
+  rawDevices.forEach((device) => addDevice(device));
+  return [...new Map(options.map((option) => [option.value, option])).values()];
+};
+
+export const extractCapabilityOptions = (payload, capabilityKey) => {
+  const kind = capabilityKey.replace(/_type$/, '');
+  const rawOptions = [];
+  const visited = new Set();
+
+  const collect = (candidate, parentKey = '') => {
+    if (!candidate || typeof candidate !== 'object' || visited.has(candidate)) return;
+    visited.add(candidate);
+    if (Array.isArray(candidate)) {
+      if (parentKey.includes(kind) || parentKey.includes('ability') || parentKey.includes('option') || parentKey.includes('event')) {
+        rawOptions.push(...candidate);
+      }
+      candidate.forEach((item) => collect(item, parentKey));
+      return;
+    }
+
+    Object.entries(candidate).forEach(([key, value]) => {
+      const normalizedKey = key.toLowerCase();
+      if (Array.isArray(value) && (
+        normalizedKey.includes(kind) || normalizedKey.includes('ability') || normalizedKey.includes('option') || normalizedKey.includes('event')
+      )) {
+        rawOptions.push(...value);
+      }
+      collect(value, normalizedKey);
+    });
+  };
+
+  collect(payload);
+  if (rawOptions.length === 0) rawOptions.push(...getPayloadArray(payload));
+
+  const options = rawOptions
+    .filter((item) => item && typeof item === 'object')
+    .map((item, index) => {
+      const value = item[capabilityKey] || item.type || item.action || item.trigger || item.condition || item.value;
+      const ability = item.ability && typeof item.ability === 'object' ? item.ability : {};
+      const valueObject = item.value && typeof item.value === 'object' ? item.value : {};
+      const abilityId = item.ability_id || item.abilityId || item.entity_id || item.entityId
+        || ability.ability_id || ability.abilityId || ability.entity_id || valueObject.ability_id || '';
+      const abilityType = item.ability_type || item.abilityType || item.domain
+        || ability.ability_type || ability.abilityType || ability.domain || valueObject.ability_type || '';
+      const label = item.label || item.name || item.title || value || `Option ${index + 1}`;
+      return {
+        ...item,
+        label: String(label).replace(/[_-]+/g, ' '),
+        value: String(value || label),
+        ability_id: abilityId,
+        ability_type: abilityType,
+      };
+    })
+    .filter((item) => item.value);
+
+  return [...new Map(options.map((item) => [`${item.value}-${item.ability_id}`, item])).values()];
+};
+
+export const buildCreateSceneRequest = ({
+  isLan,
+  selectedMockup,
+  sceneName,
+  manual,
+  isAuto,
+  trigger,
+  condition,
+  action,
+  lanRequestId,
+  wanRequestId,
+  residenceIds,
+}) => {
+  const getEntryType = (entry, typeKey) => String(entry?.[typeKey] || entry?.value || '').trim();
+  const deviceEntry = (entry, configKey, typeKey) => ({
+    [`${configKey}_config`]: 'device',
+    device_id: String(entry.device_id),
+    ability_id: String(entry.ability_id),
+    ability_type: String(entry.ability_type),
+    [typeKey]: getEntryType(entry, typeKey),
+  });
+
+  const conditions = condition ? [isLan
+    ? { condition: 'device', type: getEntryType(condition, 'condition_type'), device_id: String(condition.device_id), entity_id: String(condition.ability_id), domain: String(condition.ability_type) }
+    : deviceEntry(condition, 'condition', 'condition_type')] : [];
+
+  return {
+    command: 'create_scene_info',
+    id: isLan ? lanRequestId : wanRequestId,
+    param: {
+      ...(isLan ? {} : { residence_id: residenceIds?.[selectedMockup] }),
+      scene_name: sceneName,
+      manual,
+      ...(isLan ? { is_auto: isAuto } : {}),
+      triggers: trigger ? [deviceEntry(trigger, 'trigger', 'trigger_type')] : [],
+      conditions,
+      actions: action ? [deviceEntry(action, 'action', 'action_type')] : [],
+    },
+  };
+};
+
+export const getCreateSceneError = (payload, fallback = 'Unable to create scene.') => {
+  const result = payload?.result;
+  const resultCode = result?.code ? ` (${result.code})` : '';
+  const details = payload?.details || payload?.invalid_params || payload?.invalidParams
+    || result?.details || result?.invalid_params || result?.invalidParams;
+  const resultDetail = result?.detail;
+  const detailText = typeof details === 'string' ? details : details ? JSON.stringify(details) : '';
+  const resultDetailText = typeof resultDetail === 'string' ? resultDetail : resultDetail ? JSON.stringify(resultDetail) : '';
+  const message = payload?.message
+    || payload?.error
+    || payload?.detail
+    || detailText
+    || result?.message
+    || result?.error
+    || resultDetailText
+    || (typeof result === 'string' ? result : '')
+    || fallback;
+  return `${message}${resultCode}`;
+};
+
 export const lookupDeviceNameById = (deviceId, selectedMockup = MOCKUP_OPTIONS.MOCKUP_2) => {
   const id = normalizeText(deviceId).toLowerCase();
   if (!id) return '';

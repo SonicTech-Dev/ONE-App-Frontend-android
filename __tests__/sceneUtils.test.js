@@ -2,6 +2,8 @@ import {
   getSceneId,
   extractSceneDetailPayload,
   buildSceneInfoRequest,
+  buildCreateSceneRequest,
+  extractCapabilityOptions,
   resolveSceneUserDetails,
 } from '../app/components/Smart/Scenes/sceneUtils';
 
@@ -77,5 +79,100 @@ describe('scene detail helpers', () => {
     expect(details.actionDevices).toContain('SpotLight Entrance');
     expect(details.summaryText).toMatch(/When/i);
     expect(details.summaryText).toMatch(/turn on/i);
+  });
+
+  it('extracts nested capability lists for cascading scene selectors', () => {
+    const options = extractCapabilityOptions({
+      result: {
+        trigger_list: [
+          { trigger_type: 'turned_on', ability_id: 'switch.device-1', ability_type: 'switch' },
+        ],
+      },
+    }, 'trigger_type');
+
+    expect(options).toHaveLength(1);
+    expect(options[0].value).toBe('turned_on');
+    expect(options[0].ability_id).toBe('switch.device-1');
+  });
+
+  it('builds the WAN create-scene payload with residence and device entries', () => {
+    expect(buildCreateSceneRequest({
+      isLan: false,
+      selectedMockup: 'mockup2',
+      sceneName: 'testing wan scene',
+      manual: true,
+      isAuto: false,
+      trigger: { device_id: 'trigger-device', ability_id: 'switch.trigger', ability_type: 'switch', trigger_type: 'turned_on' },
+      condition: { device_id: 'condition-device', ability_id: 'switch.condition', ability_type: 'switch', condition_type: 'is_on' },
+      action: { device_id: 'action-device', ability_id: 'cover.action', ability_type: 'cover', action_type: 'open' },
+      lanRequestId: 'lan-id',
+      wanRequestId: 'wan-id',
+      residenceIds: { mockup2: 'residence-id' },
+    })).toEqual({
+      command: 'create_scene_info',
+      id: 'wan-id',
+      param: {
+        residence_id: 'residence-id',
+        scene_name: 'testing wan scene',
+        manual: true,
+        triggers: [{ trigger_config: 'device', device_id: 'trigger-device', ability_id: 'switch.trigger', ability_type: 'switch', trigger_type: 'turned_on' }],
+        conditions: [{ condition_config: 'device', device_id: 'condition-device', ability_id: 'switch.condition', ability_type: 'switch', condition_type: 'is_on' }],
+        actions: [{ action_config: 'device', device_id: 'action-device', ability_id: 'cover.action', ability_type: 'cover', action_type: 'open' }],
+      },
+    });
+  });
+
+  it('builds the WAN payload using the documented real device identifiers', () => {
+    const request = buildCreateSceneRequest({
+      isLan: false,
+      selectedMockup: 'mockup2',
+      sceneName: 'testing wan scene',
+      manual: true,
+      isAuto: false,
+      trigger: { device_id: 'dc7edf1beadc246b0ab0248d73025d596', ability_id: 'switch.0c11052b761c_63_1', ability_type: 'switch', trigger_type: 'turned_on' },
+      condition: { device_id: 'da59adf952f19dc69b82868e9c4f6aea2', ability_id: 'ec2dab6d92b8755a9f59b5611f0fa1ec2', ability_type: 'switch', condition_type: 'is_on' },
+      action: { device_id: 'd467f8e96bd4f456eae181b4e073ec5c2', ability_id: 'cover.0c11052b761c_62_5', ability_type: 'cover', action_type: 'open' },
+      wanRequestId: 'c45e846ca23ab42c9ae469d988ae32a96',
+      residenceIds: { mockup2: 'rabd2c6d2aecc4ce3be11e25b4ecd3c82' },
+    });
+
+    expect(request).toEqual({
+      command: 'create_scene_info',
+      id: 'c45e846ca23ab42c9ae469d988ae32a96',
+      param: {
+        residence_id: 'rabd2c6d2aecc4ce3be11e25b4ecd3c82',
+        scene_name: 'testing wan scene',
+        manual: true,
+        triggers: [{ trigger_config: 'device', device_id: 'dc7edf1beadc246b0ab0248d73025d596', ability_id: 'switch.0c11052b761c_63_1', ability_type: 'switch', trigger_type: 'turned_on' }],
+        conditions: [{ condition_config: 'device', device_id: 'da59adf952f19dc69b82868e9c4f6aea2', ability_id: 'ec2dab6d92b8755a9f59b5611f0fa1ec2', ability_type: 'switch', condition_type: 'is_on' }],
+        actions: [{ action_config: 'device', device_id: 'd467f8e96bd4f456eae181b4e073ec5c2', ability_id: 'cover.0c11052b761c_62_5', ability_type: 'cover', action_type: 'open' }],
+      },
+    });
+  });
+
+  it('builds the LAN create-scene payload using LAN condition field names', () => {
+    const request = buildCreateSceneRequest({
+      isLan: true,
+      selectedMockup: 'mockup2',
+      sceneName: 'testing lan scene',
+      manual: true,
+      isAuto: true,
+      trigger: { device_id: 'trigger-device', ability_id: 'switch.trigger', ability_type: 'switch', trigger_type: 'turned_on' },
+      condition: { device_id: 'lock-device', ability_id: 'lock.entity', ability_type: 'lock', condition_type: 'is_locked' },
+      action: { device_id: 'action-device', ability_id: 'switch.action', ability_type: 'switch', action_type: 'turn_on' },
+      lanRequestId: 'lan-id',
+      wanRequestId: 'wan-id',
+      residenceIds: {},
+    });
+
+    expect(request.id).toBe('lan-id');
+    expect(request.param.is_auto).toBe(true);
+    expect(request.param.conditions).toEqual([{
+      condition: 'device',
+      type: 'is_locked',
+      device_id: 'lock-device',
+      entity_id: 'lock.entity',
+      domain: 'lock',
+    }]);
   });
 });

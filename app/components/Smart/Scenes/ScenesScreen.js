@@ -1,19 +1,26 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
+  Alert,
   ActivityIndicator,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
+import { Dropdown } from 'react-native-element-dropdown';
 import { useAuth } from '../../../context/AuthContext';
 import Screen from '../../Screen';
 import { MOCKUP_OPTIONS } from '../SmartScreenSections/SmartScreen.constants';
 import {
   buildSceneInfoRequest,
+  buildCreateSceneRequest,
+  extractCapabilityOptions,
+  extractDeviceListOptions,
+  getCreateSceneError,
   extractSceneDetailPayload,
   getSceneId,
   resolveSceneUserDetails,
@@ -23,6 +30,14 @@ const LAN_SCENE_URL = 'http://192.168.2.115/api/v1.0/scene';
 const WAN_SCENE_URL = 'https://one-development.soniciot.com/get-scene-list/';
 const LAN_REQUEST_ID = '9f79e8baf8464f0d9a57f8fbc57d5d0f';
 const WAN_REQUEST_ID = 'c45e846ca23ab42c9ae469d988ae32a96';
+const LAN_CREATE_REQUEST_ID = '5ca2321d8dbf4f9e8c7bfe8abcb53090';
+const DEVICE_LIST_URL = 'https://one-development.soniciot.com/device_status/';
+const LAN_DEVICE_URL = 'http://192.168.2.115/api/v1.0/device';
+const LAN_CAPABILITY_IDS = {
+  trigger: 'af55bb5fbd6f4d98be5ed7fd7f5331fc',
+  condition: '367bb6f2ae39499a8b66251a5fe52ae5',
+  action: 'be3ae0d809e54767ad4f17a17b18f4dd',
+};
 const RESIDENCE_IDS = {
   [MOCKUP_OPTIONS.MOCKUP_1]: 'r45844047053e43d78fe5272c5badbd3a',
   [MOCKUP_OPTIONS.MOCKUP_2]: 'rabd2c6d2aecc4ce3be11e25b4ecd3c82',
@@ -58,6 +73,78 @@ export default function ScenesScreen({ route, navigation }) {
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [showCreate, setShowCreate] = useState(false);
+  const [deviceOptions, setDeviceOptions] = useState([]);
+  const [capabilityOptions, setCapabilityOptions] = useState({ trigger: [], condition: [], action: [] });
+  const [createDevices, setCreateDevices] = useState({ trigger: null, condition: null, action: null });
+  const [createForm, setCreateForm] = useState({ name: '', manual: true, isAuto: false, trigger: null, condition: null, action: null });
+  const [createLoading, setCreateLoading] = useState(false);
+  const [capabilityLoading, setCapabilityLoading] = useState('');
+  const [createError, setCreateError] = useState('');
+
+  const getRequestHeaders = useCallback((token) => ({
+    'Content-Type': 'application/json',
+    Accept: 'application/json',
+    Authorization: `Bearer ${token}`,
+  }), []);
+
+  const loadDevicesForCreate = useCallback(async () => {
+    try {
+      const isLan = selectedOption === 'LAN';
+      const token = isLan ? await getActiveLanToken() : await getActiveWanToken();
+      const response = await fetch(isLan ? LAN_DEVICE_URL : DEVICE_LIST_URL, {
+        method: 'POST',
+        headers: getRequestHeaders(token),
+        body: JSON.stringify({
+          command: 'get_device_list',
+          id: WAN_REQUEST_ID,
+          param: isLan ? {} : { residence_id: RESIDENCE_IDS[selectedMockup], show_ability: true },
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload?.message || payload?.error || 'Unable to load devices.');
+      setDeviceOptions(extractDeviceListOptions(payload));
+    } catch (error) {
+      setCreateError(error?.message || 'Unable to load devices.');
+    }
+  }, [getActiveLanToken, getActiveWanToken, getRequestHeaders, selectedMockup, selectedOption]);
+
+  const loadCapabilities = useCallback(async (kind, device) => {
+    if (!device?.device_id) return;
+    setCapabilityLoading(kind);
+    setCreateError('');
+    try {
+      const isLan = selectedOption === 'LAN';
+      const token = isLan ? await getActiveLanToken() : await getActiveWanToken();
+      const command = `get_device_${kind}_list`;
+      const response = await fetch(isLan ? LAN_SCENE_URL : WAN_SCENE_URL, {
+        method: 'POST',
+        headers: getRequestHeaders(token),
+        body: JSON.stringify({
+          command,
+          id: isLan ? LAN_CAPABILITY_IDS[kind] : WAN_REQUEST_ID,
+          param: {
+            device_id: device.device_id,
+            ...(isLan ? {} : { residence_id: RESIDENCE_IDS[selectedMockup] }),
+          },
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload?.message || payload?.error || `Unable to load ${kind} options.`);
+      const key = kind === 'condition' ? 'condition_type' : `${kind}_type`;
+      setCapabilityOptions((current) => ({ ...current, [kind]: extractCapabilityOptions(payload, key) }));
+    } catch (error) {
+      setCreateError(error?.message || `Unable to load ${kind} options.`);
+    } finally {
+      setCapabilityLoading('');
+    }
+  }, [getActiveLanToken, getActiveWanToken, getRequestHeaders, selectedMockup, selectedOption]);
+
+  const updateCreateSelection = (kind, device) => {
+    setCreateDevices((current) => ({ ...current, [kind]: device }));
+    setCreateForm((current) => ({ ...current, [kind]: null }));
+    loadCapabilities(kind, device);
+  };
 
   const loadSceneDetails = useCallback(async (scene) => {
     const sceneId = getSceneId(scene);
@@ -149,9 +236,133 @@ export default function ScenesScreen({ route, navigation }) {
     }
   }, [getActiveLanToken, getActiveWanToken, selectedMockup, selectedOption]);
 
+  const createScene = useCallback(async () => {
+    const isLan = selectedOption === 'LAN';
+    if (!createForm.name.trim() || !createForm.trigger || !createForm.action || (!isLan && !createForm.condition)) {
+      setCreateError(isLan
+        ? 'Enter a scene name and select a trigger and action.'
+        : 'Enter a scene name and select a trigger, condition, and action for a WAN scene.');
+      return;
+    }
+    const requiredSelections = [createForm.trigger, createForm.action, createForm.condition].filter(Boolean);
+    const missingCapabilityData = requiredSelections.some((selection) => (
+      !selection.device_id || !selection.ability_id || !selection.ability_type
+    ));
+    if (missingCapabilityData) {
+      setCreateError('The selected event is missing device capability information. Please choose the event again.');
+      return;
+    }
+    setCreateLoading(true);
+    setCreateError('');
+    try {
+      const token = isLan ? await getActiveLanToken() : await getActiveWanToken();
+      const body = buildCreateSceneRequest({
+        isLan,
+        selectedMockup,
+        sceneName: createForm.name.trim(),
+        manual: createForm.manual,
+        isAuto: createForm.isAuto,
+        trigger: createForm.trigger,
+        condition: createForm.condition,
+        action: createForm.action,
+        lanRequestId: LAN_CREATE_REQUEST_ID,
+        wanRequestId: WAN_REQUEST_ID,
+        residenceIds: RESIDENCE_IDS,
+      });
+      console.log('[ScenesScreen] create_scene_info request:', JSON.stringify(body, null, 2));
+      const response = await fetch(isLan ? LAN_SCENE_URL : WAN_SCENE_URL, {
+        method: 'POST',
+        headers: getRequestHeaders(token),
+        body: JSON.stringify(body),
+      });
+      const payload = await response.json();
+      if (!response.ok || payload?.success === false || payload?.result?.success === false) {
+        console.warn('[ScenesScreen] create_scene_info rejected:', {
+          status: response.status,
+          payload: JSON.stringify(payload),
+        });
+        throw new Error(getCreateSceneError(payload));
+      }
+      setShowCreate(false);
+      setCreateForm({ name: '', manual: true, isAuto: false, trigger: null, condition: null, action: null });
+      setCreateDevices({ trigger: null, condition: null, action: null });
+      await loadScenes();
+      Alert.alert('Scene created', 'The new scene is now available in your scene list.');
+    } catch (error) {
+      setCreateError(error?.message || 'Unable to create scene.');
+    } finally {
+      setCreateLoading(false);
+    }
+  }, [createForm, getActiveLanToken, getActiveWanToken, getRequestHeaders, loadScenes, selectedMockup, selectedOption]);
+
   useEffect(() => {
     loadScenes();
   }, [loadScenes]);
+
+  useEffect(() => {
+    if (showCreate && deviceOptions.length === 0) loadDevicesForCreate();
+  }, [deviceOptions.length, loadDevicesForCreate, showCreate]);
+
+  const renderCreateSelector = (kind, title, iconName) => {
+    const device = createDevices[kind];
+    const selectedCapability = createForm[kind];
+    const options = capabilityOptions[kind];
+    const typeKey = kind === 'condition' ? 'condition_type' : `${kind}_type`;
+    const dropdownOptions = device ? options : deviceOptions;
+
+    return (
+      <View style={styles.createSection}>
+        <View style={styles.createSectionTitleRow}>
+          <MaterialCommunityIcons name={iconName} size={19} color="#6f4bd8" />
+          <Text style={styles.createSectionTitle}>{title}</Text>
+        </View>
+        <Dropdown
+          style={styles.createDropdown}
+          containerStyle={styles.createDropdownContainer}
+          data={dropdownOptions}
+          labelField="label"
+          valueField="value"
+          placeholder={device ? `Select ${title.toLowerCase()} event` : `Select ${title.toLowerCase()} device`}
+          value={selectedCapability?.value || device?.value || null}
+          search
+          searchPlaceholder={device ? `Search ${title.toLowerCase()} events` : 'Search devices'}
+          onChange={(nextValue) => {
+            if (device) {
+              setCreateForm((current) => ({
+                ...current,
+                [kind]: {
+                  ...nextValue,
+                  device_id: device.device_id,
+                  device_name: device.device_name,
+                  [typeKey]: nextValue[typeKey] || nextValue.value,
+                },
+              }));
+            } else {
+              updateCreateSelection(kind, nextValue);
+            }
+          }}
+          placeholderStyle={styles.createPlaceholder}
+          selectedTextStyle={styles.createSelectedText}
+          itemTextStyle={styles.createItemText}
+        />
+        {device ? (
+          capabilityLoading === kind ? (
+            <View style={styles.capabilityLoading}><ActivityIndicator size="small" color="#6f4bd8" /><Text style={styles.capabilityLoadingText}>Loading options...</Text></View>
+          ) : (
+            <TouchableOpacity
+              style={styles.changeDeviceButton}
+              onPress={() => {
+                setCreateDevices((current) => ({ ...current, [kind]: null }));
+                setCreateForm((current) => ({ ...current, [kind]: null }));
+              }}
+            >
+              <Text style={styles.changeDeviceText}>Change device</Text>
+            </TouchableOpacity>
+          )
+        ) : null}
+      </View>
+    );
+  };
 
   return (
     <Screen style={styles.screen}>
@@ -169,9 +380,16 @@ export default function ScenesScreen({ route, navigation }) {
             <Text style={styles.title}>Scenes</Text>
             <Text style={styles.subtitle}>{selectedOption} - {selectedMockup === MOCKUP_OPTIONS.MOCKUP_1 ? 'Mockup 1' : 'Mockup 2'}</Text>
           </View>
-          <View style={styles.headerIcon}>
-            <MaterialCommunityIcons name="play-box-multiple-outline" size={25} color="#6f4bd8" />
-          </View>
+          <TouchableOpacity
+            style={styles.headerIcon}
+            onPress={() => {
+              setShowCreate((current) => !current);
+              setCreateError('');
+            }}
+            accessibilityLabel={showCreate ? 'Close create scene form' : 'Create scene'}
+          >
+            <MaterialCommunityIcons name={showCreate ? 'close' : 'plus'} size={27} color="#6f4bd8" />
+          </TouchableOpacity>
         </View>
 
         <View style={styles.totalCard}>
@@ -183,6 +401,51 @@ export default function ScenesScreen({ route, navigation }) {
             {loading ? <ActivityIndicator size="small" color="#6f4bd8" /> : <Text style={styles.totalValue}>{scenes.length}</Text>}
           </View>
         </View>
+
+        {showCreate ? (
+          <View style={styles.createCard}>
+            <View style={styles.createHeaderRow}>
+              <View>
+                <Text style={styles.createTitle}>Create scene</Text>
+                <Text style={styles.createSubtitle}>Choose a device first, then choose its event.</Text>
+              </View>
+              {deviceOptions.length === 0 ? <ActivityIndicator size="small" color="#6f4bd8" /> : null}
+            </View>
+
+            <TextInput
+              style={styles.createInput}
+              placeholder="Scene name"
+              placeholderTextColor="#9b8bb8"
+              value={createForm.name}
+              onChangeText={(name) => setCreateForm((current) => ({ ...current, name }))}
+            />
+
+            <View style={styles.modeRow}>
+              <Text style={styles.modeLabel}>Mode</Text>
+              <TouchableOpacity
+                style={[styles.modeToggle, createForm.manual && styles.modeToggleActive]}
+                onPress={() => setCreateForm((current) => ({ ...current, manual: !current.manual }))}
+              >
+                <Text style={styles.modeToggleText}>Manual</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modeToggle, createForm.isAuto && styles.modeToggleActive]}
+                onPress={() => setCreateForm((current) => ({ ...current, isAuto: !current.isAuto }))}
+              >
+                <Text style={styles.modeToggleText}>Auto</Text>
+              </TouchableOpacity>
+            </View>
+
+            {renderCreateSelector('trigger', 'Trigger', 'motion-sensor')}
+            {renderCreateSelector('condition', 'Condition', 'filter-outline')}
+            {renderCreateSelector('action', 'Action', 'lightbulb-on-outline')}
+
+            {createError ? <Text style={styles.createError}>{createError}</Text> : null}
+            <TouchableOpacity style={styles.createButton} onPress={createScene} disabled={createLoading}>
+              {createLoading ? <ActivityIndicator size="small" color="#ffffff" /> : <Text style={styles.createButtonText}>Create scene</Text>}
+            </TouchableOpacity>
+          </View>
+        ) : null}
 
         {errorMessage ? (
           <View style={styles.stateCard}>
@@ -342,4 +605,29 @@ const styles = StyleSheet.create({
   actionSummaryLabel: { color: '#7c6a9e', fontSize: 12, fontWeight: '800', marginBottom: 8 },
   actionSummaryText: { color: '#34225f', fontSize: 14, fontWeight: '700', lineHeight: 22 },
   detailLoadingText: { color: '#443467', fontSize: 13, fontWeight: '700', marginTop: 8 },
+  createCard: { backgroundColor: '#ffffff', borderRadius: 18, padding: 18, marginBottom: 18 },
+  createHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
+  createTitle: { color: '#34225f', fontSize: 19, fontWeight: '800' },
+  createSubtitle: { color: '#8975a8', fontSize: 12, marginTop: 4 },
+  createInput: { height: 50, borderWidth: 1, borderColor: '#dfd5f0', borderRadius: 10, paddingHorizontal: 14, color: '#34225f', fontSize: 14, marginBottom: 12 },
+  modeRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
+  modeLabel: { color: '#6e5f93', fontSize: 13, fontWeight: '700', marginRight: 8 },
+  modeToggle: { borderWidth: 1, borderColor: '#dfd5f0', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, marginRight: 8 },
+  modeToggleActive: { backgroundColor: '#efe6ff', borderColor: '#6f4bd8' },
+  modeToggleText: { color: '#443467', fontSize: 12, fontWeight: '700' },
+  createSection: { marginTop: 12 },
+  createSectionTitleRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 2 },
+  createSectionTitle: { color: '#443467', fontSize: 14, fontWeight: '800', marginLeft: 7 },
+  createDropdown: { height: 50, borderWidth: 1, borderColor: '#dfd5f0', borderRadius: 10, paddingHorizontal: 12, marginTop: 8 },
+  createDropdownContainer: { borderRadius: 10 },
+  createPlaceholder: { color: '#9b8bb8', fontSize: 13 },
+  createSelectedText: { color: '#34225f', fontSize: 13 },
+  createItemText: { color: '#443467', fontSize: 13 },
+  capabilityLoading: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12 },
+  capabilityLoadingText: { color: '#8975a8', fontSize: 12, marginLeft: 8 },
+  changeDeviceButton: { alignSelf: 'flex-start', paddingVertical: 7 },
+  changeDeviceText: { color: '#6f4bd8', fontSize: 12, fontWeight: '700' },
+  createError: { color: '#c35b6f', fontSize: 12, lineHeight: 18, marginTop: 12 },
+  createButton: { minHeight: 48, borderRadius: 12, backgroundColor: '#6f4bd8', alignItems: 'center', justifyContent: 'center', marginTop: 16 },
+  createButtonText: { color: '#ffffff', fontSize: 14, fontWeight: '800' },
 });
