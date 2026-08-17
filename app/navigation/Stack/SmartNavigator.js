@@ -9,6 +9,7 @@ import F2Lock from "../../components/Smart/SmartLock/F2Lock";
 import IntercomScreen from "../../components/Smart/Intercom/Intercom"
 import DeviceStatuses from "../../components/Smart/DeviceStatuses";
 import IPCamera from "../../components/Smart/IPCameras/IPCamera";
+import ScenesScreen from "../../components/Smart/Scenes/ScenesScreen";
 const Stack = createStackNavigator();
 
 const SmartNavigator = ({ route, navigation }) => {
@@ -69,6 +70,13 @@ const SmartNavigator = ({ route, navigation }) => {
       <Stack.Screen
         name="IPCameraScreen"
         component={IPCamera}
+        options={{
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="ScenesScreen"
+        component={ScenesScreen}
         options={{
           headerShown: false,
         }}

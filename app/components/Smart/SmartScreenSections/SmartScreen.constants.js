@@ -472,8 +472,8 @@ export const MOCKUP_2_DEVICE_CATEGORIES = [
             commandPair: { on: 'turn_on', off: 'turn_off' }
           },
           wan: {
-            device_id: 'd2d5164a2e04d4f01ab14c261fb73d04d',
-            ability_id: 'e9fc349f737d5461a9cb618218a3cafd3',
+            device_id: 'd3bc3534ce7d647cbadf763a457eb4077',
+            ability_id: 'e2cea6db0773b4d6380b91b5a75850b8c',
             commandPair: { on: 'turn_on', off: 'turn_off' }
           }},
         ],

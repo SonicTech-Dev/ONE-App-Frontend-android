@@ -71,6 +71,18 @@ const StatsSection = ({ selectedOption, setSelectedOption, selectedMockup, setSe
           </View>
           <Text style={styles.actionButtonLabel}>Cameras</Text>
         </TouchableOpacity>
+
+        {/* Scenes */}
+        <TouchableOpacity
+          style={styles.actionButtonWrapper}
+          onPress={() => navigation.navigate('ScenesScreen', { selectedOption, selectedMockup })}
+          activeOpacity={0.7}
+        >
+          <View style={[styles.actionButtonIcon, { backgroundColor: '#efe6ff' }]}>
+            <MaterialCommunityIcons name="play-box-multiple-outline" size={24} color="#6f4bd8" />
+          </View>
+          <Text style={styles.actionButtonLabel}>Scenes</Text>
+        </TouchableOpacity>
       </View>
 
       <RadioRow>
