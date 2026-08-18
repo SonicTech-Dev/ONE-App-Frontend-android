@@ -125,6 +125,42 @@ export const getSceneId = (scene = {}) => {
   return '';
 };
 
+export const getSceneEntityId = (scene = {}) => {
+  if (!scene || typeof scene !== 'object') return '';
+
+  const candidates = [
+    scene.scene_entity_id,
+    scene.sceneEntityId,
+    scene.entity_id,
+    scene.entityId,
+    scene.automation_entity_id,
+    scene.automationEntityId,
+  ];
+  for (const value of candidates) {
+    if (value !== undefined && value !== null && normalizeText(value) !== '') {
+      return String(value);
+    }
+  }
+
+  return '';
+};
+
+export const buildManualTriggerSceneRequest = ({
+  isLan,
+  selectedMockup,
+  sceneEntityId,
+  lanRequestId,
+  wanRequestId,
+  residenceIds,
+}) => ({
+  command: 'manual_trigger_scene',
+  id: isLan ? lanRequestId : wanRequestId,
+  param: {
+    ...(isLan ? {} : { residence_id: residenceIds?.[selectedMockup] }),
+    scene_entity_id: sceneEntityId,
+  },
+});
+
 export const extractSceneDetailPayload = (payload = {}) => {
   if (!payload || typeof payload !== 'object') return null;
 
@@ -322,6 +358,44 @@ export const buildCreateSceneRequest = ({
       triggers: trigger ? [deviceEntry(trigger, 'trigger', 'trigger_type')] : [],
       conditions,
       actions: action ? [deviceEntry(action, 'action', 'action_type')] : [],
+    },
+  };
+};
+
+export const buildUpdateSceneRequest = ({
+  isLan,
+  selectedMockup,
+  sceneId,
+  sceneName,
+  manual,
+  isAuto,
+  trigger,
+  condition,
+  action,
+  lanRequestId,
+  wanRequestId,
+  residenceIds,
+}) => {
+  const createRequest = buildCreateSceneRequest({
+    isLan,
+    selectedMockup,
+    sceneName,
+    manual,
+    isAuto,
+    trigger,
+    condition,
+    action,
+    lanRequestId,
+    wanRequestId,
+    residenceIds,
+  });
+
+  return {
+    ...createRequest,
+    command: 'update_scene_info',
+    param: {
+      ...createRequest.param,
+      scene_id: sceneId,
     },
   };
 };

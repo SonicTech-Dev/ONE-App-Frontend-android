@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
   ActivityIndicator,
+  Modal,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -18,11 +19,14 @@ import { MOCKUP_OPTIONS } from '../SmartScreenSections/SmartScreen.constants';
 import {
   buildSceneInfoRequest,
   buildCreateSceneRequest,
+  buildUpdateSceneRequest,
   extractCapabilityOptions,
   extractDeviceListOptions,
   getCreateSceneError,
   extractSceneDetailPayload,
+  getSceneEntityId,
   getSceneId,
+  buildManualTriggerSceneRequest,
   resolveSceneUserDetails,
 } from './sceneUtils';
 
@@ -30,7 +34,9 @@ const LAN_SCENE_URL = 'http://192.168.2.115/api/v1.0/scene';
 const WAN_SCENE_URL = 'https://one-development.soniciot.com/get-scene-list/';
 const LAN_REQUEST_ID = '9f79e8baf8464f0d9a57f8fbc57d5d0f';
 const WAN_REQUEST_ID = 'c45e846ca23ab42c9ae469d988ae32a96';
+const LAN_MANUAL_TRIGGER_REQUEST_ID = 'd0ed2ce5215a47ec8eb3896c7b65a8ff';
 const LAN_CREATE_REQUEST_ID = '5ca2321d8dbf4f9e8c7bfe8abcb53090';
+const LAN_UPDATE_REQUEST_ID = '1d6b6b3c9f6c4a8aa55c0b46d0b7a901';
 const DEVICE_LIST_URL = 'https://one-development.soniciot.com/device_status/';
 const LAN_DEVICE_URL = 'http://192.168.2.115/api/v1.0/device';
 const LAN_CAPABILITY_IDS = {
@@ -70,10 +76,13 @@ export default function ScenesScreen({ route, navigation }) {
   const [scenes, setScenes] = useState([]);
   const [selectedScene, setSelectedScene] = useState(null);
   const [selectedSceneDetails, setSelectedSceneDetails] = useState(null);
+  const [detailModalVisible, setDetailModalVisible] = useState(false);
+  const [triggeringSceneId, setTriggeringSceneId] = useState('');
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [showCreate, setShowCreate] = useState(false);
+  const [editingSceneId, setEditingSceneId] = useState('');
   const [deviceOptions, setDeviceOptions] = useState([]);
   const [capabilityOptions, setCapabilityOptions] = useState({ trigger: [], condition: [], action: [] });
   const [createDevices, setCreateDevices] = useState({ trigger: null, condition: null, action: null });
@@ -132,7 +141,13 @@ export default function ScenesScreen({ route, navigation }) {
       const payload = await response.json();
       if (!response.ok) throw new Error(payload?.message || payload?.error || `Unable to load ${kind} options.`);
       const key = kind === 'condition' ? 'condition_type' : `${kind}_type`;
-      setCapabilityOptions((current) => ({ ...current, [kind]: extractCapabilityOptions(payload, key) }));
+      setCapabilityOptions((current) => {
+        const options = [...current[kind], ...extractCapabilityOptions(payload, key)];
+        return {
+          ...current,
+          [kind]: [...new Map(options.map((option) => [`${option.value}-${option.ability_id}`, option])).values()],
+        };
+      });
     } catch (error) {
       setCreateError(error?.message || `Unable to load ${kind} options.`);
     } finally {
@@ -146,11 +161,82 @@ export default function ScenesScreen({ route, navigation }) {
     loadCapabilities(kind, device);
   };
 
-  const loadSceneDetails = useCallback(async (scene) => {
+  const resetSceneEditor = useCallback(() => {
+    setShowCreate(false);
+    setEditingSceneId('');
+    setCreateForm({ name: '', manual: true, isAuto: false, trigger: null, condition: null, action: null });
+    setCreateDevices({ trigger: null, condition: null, action: null });
+    setCapabilityOptions({ trigger: [], condition: [], action: [] });
+    setCreateError('');
+  }, []);
+
+  const openSceneEditor = useCallback(() => {
+    const detail = selectedSceneDetails || selectedScene;
+    const sceneId = getSceneId(detail) || getSceneId(selectedScene);
+    if (!sceneId) {
+      Alert.alert('Scene unavailable', 'This scene is missing its identifier.');
+      return;
+    }
+
+    const toSelection = (entry, kind) => {
+      if (!entry?.device_id) return null;
+      const typeKey = kind === 'condition' ? 'condition_type' : `${kind}_type`;
+      const value = entry[typeKey] || (kind === 'condition' ? entry.type : '') || entry.value || '';
+      const abilityId = entry.ability_id || entry.entity_id || '';
+      const abilityType = entry.ability_type || entry.domain || '';
+      return {
+        ...entry,
+        label: String(value).replace(/[_-]+/g, ' '),
+        value: String(value),
+        device_id: String(entry.device_id),
+        ability_id: String(abilityId),
+        ability_type: String(abilityType),
+        [typeKey]: String(value),
+      };
+    };
+    const toDevice = (selection) => selection ? {
+      label: selection.device_name || selection.device_id,
+      value: selection.device_id,
+      device_id: selection.device_id,
+      device_name: selection.device_name || selection.device_id,
+    } : null;
+    const trigger = toSelection(detail?.triggers?.[0], 'trigger');
+    const condition = toSelection(detail?.conditions?.[0], 'condition');
+    const action = toSelection(detail?.actions?.[0], 'action');
+    const isAuto = detail?.is_auto === true || detail?.is_auto === 'true' || detail?.is_auto === 1;
+    const manual = detail?.manual !== false && detail?.manual !== 'false' && detail?.manual !== 0;
+
+    setDetailModalVisible(false);
+    setEditingSceneId(sceneId);
+    setCreateError('');
+    setCreateForm({
+      name: detail?.scene_name || detail?.name || '',
+      manual,
+      isAuto,
+      trigger,
+      condition,
+      action,
+    });
+    setCreateDevices({ trigger: toDevice(trigger), condition: toDevice(condition), action: toDevice(action) });
+    setCapabilityOptions({
+      trigger: trigger ? [trigger] : [],
+      condition: condition ? [condition] : [],
+      action: action ? [action] : [],
+    });
+    [
+      ['trigger', toDevice(trigger)],
+      ['condition', toDevice(condition)],
+      ['action', toDevice(action)],
+    ].forEach(([kind, device]) => {
+      if (device) loadCapabilities(kind, device);
+    });
+  }, [loadCapabilities, selectedScene, selectedSceneDetails]);
+
+  const loadSceneDetails = useCallback(async (scene, showInModal = false) => {
     const sceneId = getSceneId(scene);
     if (!sceneId) {
       setSelectedSceneDetails(null);
-      return;
+      return null;
     }
 
     const isLan = selectedOption === 'LAN';
@@ -165,6 +251,9 @@ export default function ScenesScreen({ route, navigation }) {
     });
 
     try {
+      setSelectedScene(scene);
+      setSelectedSceneDetails(null);
+      if (showInModal) setDetailModalVisible(true);
       setDetailLoading(true);
       const response = await fetch(isLan ? LAN_SCENE_URL : WAN_SCENE_URL, {
         method: 'POST',
@@ -184,15 +273,60 @@ export default function ScenesScreen({ route, navigation }) {
 
       const detailPayload = extractSceneDetailPayload(payload);
       setSelectedSceneDetails(detailPayload);
-      setSelectedScene(scene);
+      return detailPayload;
     } catch (error) {
       console.error('[ScenesScreen] Failed to load scene details:', error);
       setSelectedSceneDetails(null);
-      setSelectedScene(scene);
+      return null;
     } finally {
       setDetailLoading(false);
     }
   }, [getActiveLanToken, getActiveWanToken, selectedMockup, selectedOption]);
+
+  const triggerScene = useCallback(async (scene) => {
+    const sceneId = getSceneId(scene);
+    if (!sceneId) {
+      Alert.alert('Scene unavailable', 'This scene is missing its identifier.');
+      return;
+    }
+
+    setTriggeringSceneId(sceneId);
+    try {
+      const sceneDetails = await loadSceneDetails(scene);
+      const sceneEntityId = getSceneEntityId(sceneDetails || scene);
+      if (!sceneEntityId) {
+        throw new Error('The scene information did not include a scene entity ID.');
+      }
+
+      const isLan = selectedOption === 'LAN';
+      const token = isLan ? await getActiveLanToken() : await getActiveWanToken();
+      const response = await fetch(isLan ? LAN_SCENE_URL : WAN_SCENE_URL, {
+        method: 'POST',
+        headers: getRequestHeaders(token),
+        body: JSON.stringify(buildManualTriggerSceneRequest({
+          isLan,
+          selectedMockup,
+          sceneEntityId,
+          lanRequestId: LAN_MANUAL_TRIGGER_REQUEST_ID,
+          wanRequestId: WAN_REQUEST_ID,
+          residenceIds: RESIDENCE_IDS,
+        })),
+      });
+      let payload = null;
+      try {
+        payload = await response.json();
+      } catch {}
+      if (!response.ok || payload?.success === false || payload?.result?.success === false) {
+        throw new Error(payload?.message || payload?.error || payload?.detail || 'Unable to trigger this scene.');
+      }
+      Alert.alert('Scene started', `${getSceneName(scene, 0)} is now running.`);
+    } catch (error) {
+      console.error('[ScenesScreen] Failed to trigger scene:', error);
+      Alert.alert('Unable to start scene', error?.message || 'Please try again.');
+    } finally {
+      setTriggeringSceneId('');
+    }
+  }, [getActiveLanToken, getActiveWanToken, getRequestHeaders, loadSceneDetails, selectedMockup, selectedOption]);
 
   const loadScenes = useCallback(async () => {
     setLoading(true);
@@ -295,13 +429,67 @@ export default function ScenesScreen({ route, navigation }) {
     }
   }, [createForm, getActiveLanToken, getActiveWanToken, getRequestHeaders, loadScenes, selectedMockup, selectedOption]);
 
+  const updateScene = useCallback(async () => {
+    const isLan = selectedOption === 'LAN';
+    if (!editingSceneId || !createForm.name.trim() || !createForm.trigger || !createForm.action || (!isLan && !createForm.condition)) {
+      setCreateError(isLan
+        ? 'Enter a scene name and select a trigger and action.'
+        : 'Enter a scene name and select a trigger, condition, and action for a WAN scene.');
+      return;
+    }
+    const requiredSelections = [createForm.trigger, createForm.action, createForm.condition].filter(Boolean);
+    const missingCapabilityData = requiredSelections.some((selection) => (
+      !selection.device_id || !selection.ability_id || !selection.ability_type
+    ));
+    if (missingCapabilityData) {
+      setCreateError('The selected event is missing device capability information. Please choose the event again.');
+      return;
+    }
+
+    setCreateLoading(true);
+    setCreateError('');
+    try {
+      const token = isLan ? await getActiveLanToken() : await getActiveWanToken();
+      const body = buildUpdateSceneRequest({
+        isLan,
+        selectedMockup,
+        sceneId: editingSceneId,
+        sceneName: createForm.name.trim(),
+        manual: createForm.manual,
+        isAuto: createForm.isAuto,
+        trigger: createForm.trigger,
+        condition: createForm.condition,
+        action: createForm.action,
+        lanRequestId: LAN_UPDATE_REQUEST_ID,
+        wanRequestId: WAN_REQUEST_ID,
+        residenceIds: RESIDENCE_IDS,
+      });
+      const response = await fetch(isLan ? LAN_SCENE_URL : WAN_SCENE_URL, {
+        method: 'POST',
+        headers: getRequestHeaders(token),
+        body: JSON.stringify(body),
+      });
+      const payload = await response.json();
+      if (!response.ok || payload?.success === false || payload?.result?.success === false) {
+        throw new Error(getCreateSceneError(payload, 'Unable to update scene.'));
+      }
+      resetSceneEditor();
+      await loadScenes();
+      Alert.alert('Scene updated', 'Your scene changes have been saved.');
+    } catch (error) {
+      setCreateError(error?.message || 'Unable to update scene.');
+    } finally {
+      setCreateLoading(false);
+    }
+  }, [createForm, editingSceneId, getActiveLanToken, getActiveWanToken, getRequestHeaders, loadScenes, resetSceneEditor, selectedMockup, selectedOption]);
+
   useEffect(() => {
     loadScenes();
   }, [loadScenes]);
 
   useEffect(() => {
-    if (showCreate && deviceOptions.length === 0) loadDevicesForCreate();
-  }, [deviceOptions.length, loadDevicesForCreate, showCreate]);
+    if ((showCreate || editingSceneId) && deviceOptions.length === 0) loadDevicesForCreate();
+  }, [deviceOptions.length, editingSceneId, loadDevicesForCreate, showCreate]);
 
   const renderCreateSelector = (kind, title, iconName) => {
     const device = createDevices[kind];
@@ -383,12 +571,16 @@ export default function ScenesScreen({ route, navigation }) {
           <TouchableOpacity
             style={styles.headerIcon}
             onPress={() => {
-              setShowCreate((current) => !current);
-              setCreateError('');
+              if (showCreate || editingSceneId) {
+                resetSceneEditor();
+              } else {
+                setShowCreate(true);
+                setCreateError('');
+              }
             }}
-            accessibilityLabel={showCreate ? 'Close create scene form' : 'Create scene'}
+            accessibilityLabel={showCreate || editingSceneId ? 'Close scene editor' : 'Create scene'}
           >
-            <MaterialCommunityIcons name={showCreate ? 'close' : 'plus'} size={27} color="#6f4bd8" />
+            <MaterialCommunityIcons name={showCreate || editingSceneId ? 'close' : 'plus'} size={27} color="#6f4bd8" />
           </TouchableOpacity>
         </View>
 
@@ -402,12 +594,12 @@ export default function ScenesScreen({ route, navigation }) {
           </View>
         </View>
 
-        {showCreate ? (
+        {showCreate || editingSceneId ? (
           <View style={styles.createCard}>
             <View style={styles.createHeaderRow}>
               <View>
-                <Text style={styles.createTitle}>Create scene</Text>
-                <Text style={styles.createSubtitle}>Choose a device first, then choose its event.</Text>
+                <Text style={styles.createTitle}>{editingSceneId ? 'Edit scene' : 'Create scene'}</Text>
+                <Text style={styles.createSubtitle}>{editingSceneId ? 'Update the selected devices or events, then save your changes.' : 'Choose a device first, then choose its event.'}</Text>
               </View>
               {deviceOptions.length === 0 ? <ActivityIndicator size="small" color="#6f4bd8" /> : null}
             </View>
@@ -441,8 +633,8 @@ export default function ScenesScreen({ route, navigation }) {
             {renderCreateSelector('action', 'Action', 'lightbulb-on-outline')}
 
             {createError ? <Text style={styles.createError}>{createError}</Text> : null}
-            <TouchableOpacity style={styles.createButton} onPress={createScene} disabled={createLoading}>
-              {createLoading ? <ActivityIndicator size="small" color="#ffffff" /> : <Text style={styles.createButtonText}>Create scene</Text>}
+            <TouchableOpacity style={styles.createButton} onPress={editingSceneId ? updateScene : createScene} disabled={createLoading}>
+              {createLoading ? <ActivityIndicator size="small" color="#ffffff" /> : <Text style={styles.createButtonText}>{editingSceneId ? 'Save changes' : 'Create scene'}</Text>}
             </TouchableOpacity>
           </View>
         ) : null}
@@ -467,94 +659,99 @@ export default function ScenesScreen({ route, navigation }) {
             <View style={styles.list}>
               {scenes.map((scene, index) => {
                 const sceneId = getSceneId(scene);
-                const isSelected = selectedScene && getSceneId(selectedScene) === sceneId;
+                const isTriggering = triggeringSceneId === sceneId;
 
                 return (
-                  <TouchableOpacity
+                  <View
                     key={sceneId || `${getSceneName(scene, index)}-${index}`}
-                    style={[styles.sceneRow, isSelected && styles.sceneRowSelected]}
-                    onPress={() => loadSceneDetails(scene)}
-                    activeOpacity={0.8}
+                    style={[styles.sceneRow, isTriggering && styles.sceneRowSelected]}
                   >
-                    <View style={styles.sceneNumber}><Text style={styles.sceneNumberText}>{index + 1}</Text></View>
-                    <Text style={styles.sceneName}>{getSceneName(scene, index)}</Text>
-                    <MaterialCommunityIcons name="chevron-right" size={22} color="#a28bcf" />
-                  </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.sceneTileBody}
+                      onPress={() => triggerScene(scene)}
+                      disabled={Boolean(triggeringSceneId)}
+                      activeOpacity={0.8}
+                      accessibilityLabel={`Run ${getSceneName(scene, index)}`}
+                    >
+                      <View style={styles.sceneNumber}><Text style={styles.sceneNumberText}>{index + 1}</Text></View>
+                      <Text style={styles.sceneName}>{getSceneName(scene, index)}</Text>
+                      {isTriggering ? <ActivityIndicator size="small" color="#6f4bd8" /> : <MaterialCommunityIcons name="play-circle-outline" size={22} color="#6f4bd8" />}
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.sceneDetailButton}
+                      onPress={() => loadSceneDetails(scene, true)}
+                      accessibilityLabel={`View details for ${getSceneName(scene, index)}`}
+                    >
+                      <MaterialCommunityIcons name="chevron-right" size={24} color="#a28bcf" />
+                    </TouchableOpacity>
+                  </View>
                 );
               })}
             </View>
-
-            {detailLoading ? (
-              <View style={styles.detailCard}>
-                <ActivityIndicator size="small" color="#6f4bd8" />
-                <Text style={styles.detailLoadingText}>Loading scene details...</Text>
-              </View>
-            ) : selectedScene ? (
-              <View style={styles.detailCard}>
-                {(() => {
-                  const details = resolveSceneUserDetails(selectedSceneDetails || selectedScene, selectedMockup);
-
-                  return (
-                    <>
-                      <View style={styles.detailHeaderRow}>
-                        <View style={styles.detailBadge}>
-                          <MaterialCommunityIcons name="play-box-multiple-outline" size={18} color="#6f4bd8" />
-                        </View>
-                        <Text style={styles.detailTitle}>Scene summary</Text>
-                        <View style={styles.badgeGroup}>
-                          {details.modes.map((mode) => (
-                            <View key={mode} style={[styles.modeBadge, mode === 'Auto' ? styles.autoBadge : styles.manualBadge]}>
-                              <Text style={styles.modeBadgeText}>{mode}</Text>
-                            </View>
-                          ))}
-                        </View>
-                      </View>
-
-                      <Text style={styles.detailSceneName}>{details.name}</Text>
-                      <Text style={styles.detailDescription}>{details.description}</Text>
-
-                      <View style={styles.deviceSummaryCard}>
-                        <Text style={styles.deviceSummaryLabel}>Trigger</Text>
-                        {details.triggerDetails.map((text, idx) => (
-                          <View key={`trigger-${text}-${idx}`} style={styles.devicePill}>
-                            <MaterialCommunityIcons name="motion-sensor" size={15} color="#6f4bd8" />
-                            <Text style={styles.devicePillText}>{text}</Text>
-                          </View>
-                        ))}
-                      </View>
-
-                      <View style={styles.conditionSummaryCard}>
-                        <Text style={styles.conditionSummaryLabel}>Condition</Text>
-                        {details.conditionDetails.map((text, idx) => (
-                          <View key={`condition-${text}-${idx}`} style={styles.devicePill}>
-                            <MaterialCommunityIcons name="filter-outline" size={15} color="#6f4bd8" />
-                            <Text style={styles.devicePillText}>{text}</Text>
-                          </View>
-                        ))}
-                      </View>
-
-                      <View style={styles.actionSummaryCard}>
-                        <Text style={styles.actionSummaryLabel}>Action</Text>
-                        {details.actionDetails.map((text, idx) => (
-                          <View key={`action-${text}-${idx}`} style={styles.devicePill}>
-                            <MaterialCommunityIcons name="lightbulb-on-outline" size={15} color="#6f4bd8" />
-                            <Text style={styles.devicePillText}>{text}</Text>
-                          </View>
-                        ))}
-                      </View>
-
-                      <View style={styles.actionSummaryCard}>
-                        <Text style={styles.actionSummaryLabel}>Scene behavior</Text>
-                        <Text style={styles.actionSummaryText}>{details.summaryText}</Text>
-                      </View>
-                    </>
-                  );
-                })()}
-              </View>
-            ) : null}
           </>
         )}
       </ScrollView>
+
+      <Modal
+        transparent
+        animationType="slide"
+        visible={detailModalVisible}
+        onRequestClose={() => setDetailModalVisible(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <View style={styles.detailHeaderRow}>
+              <View style={styles.detailBadge}>
+                <MaterialCommunityIcons name="play-box-multiple-outline" size={18} color="#6f4bd8" />
+              </View>
+              <Text style={styles.detailTitle}>Scene summary</Text>
+              <TouchableOpacity onPress={() => setDetailModalVisible(false)} accessibilityLabel="Close scene details">
+                <MaterialCommunityIcons name="close" size={24} color="#6f4bd8" />
+              </TouchableOpacity>
+            </View>
+
+            {detailLoading ? (
+              <View style={styles.detailLoading}>
+                <ActivityIndicator size="small" color="#6f4bd8" />
+                <Text style={styles.detailLoadingText}>Loading scene details...</Text>
+              </View>
+            ) : selectedScene ? (() => {
+              const details = resolveSceneUserDetails(selectedSceneDetails || selectedScene, selectedMockup);
+              return (
+                <ScrollView showsVerticalScrollIndicator={false}>
+                  <View style={styles.badgeGroup}>
+                    {details.modes.map((mode) => (
+                      <View key={mode} style={[styles.modeBadge, mode === 'Auto' ? styles.autoBadge : styles.manualBadge]}>
+                        <Text style={styles.modeBadgeText}>{mode}</Text>
+                      </View>
+                    ))}
+                  </View>
+                  <Text style={styles.detailSceneName}>{details.name}</Text>
+                  <Text style={styles.detailDescription}>{details.description}</Text>
+                  <TouchableOpacity style={styles.editButton} onPress={openSceneEditor} accessibilityLabel="Edit scene">
+                    <MaterialCommunityIcons name="pencil-outline" size={18} color="#ffffff" />
+                    <Text style={styles.editButtonText}>Edit scene</Text>
+                  </TouchableOpacity>
+                  <View style={styles.deviceSummaryCard}>
+                    <Text style={styles.deviceSummaryLabel}>Trigger</Text>
+                    {details.triggerDetails.map((text, idx) => <View key={`trigger-${text}-${idx}`} style={styles.devicePill}><MaterialCommunityIcons name="motion-sensor" size={15} color="#6f4bd8" /><Text style={styles.devicePillText}>{text}</Text></View>)}
+                  </View>
+                  <View style={styles.conditionSummaryCard}>
+                    <Text style={styles.conditionSummaryLabel}>Condition</Text>
+                    {details.conditionDetails.map((text, idx) => <View key={`condition-${text}-${idx}`} style={styles.devicePill}><MaterialCommunityIcons name="filter-outline" size={15} color="#6f4bd8" /><Text style={styles.devicePillText}>{text}</Text></View>)}
+                  </View>
+                  <View style={styles.actionSummaryCard}>
+                    <Text style={styles.actionSummaryLabel}>Action</Text>
+                    {details.actionDetails.map((text, idx) => <View key={`action-${text}-${idx}`} style={styles.devicePill}><MaterialCommunityIcons name="lightbulb-on-outline" size={15} color="#6f4bd8" /><Text style={styles.devicePillText}>{text}</Text></View>)}
+                    <Text style={styles.actionSummaryLabel}>Scene behavior</Text>
+                    <Text style={styles.actionSummaryText}>{details.summaryText}</Text>
+                  </View>
+                </ScrollView>
+              );
+            })() : null}
+          </View>
+        </View>
+      </Modal>
     </Screen>
   );
 }
@@ -573,9 +770,11 @@ const styles = StyleSheet.create({
   totalIcon: { width: 58, height: 58, borderRadius: 17, backgroundColor: '#f0eaff', alignItems: 'center', justifyContent: 'center', marginRight: 15 },
   totalLabel: { color: '#7c6a9e', fontSize: 13, fontWeight: '700' },
   totalValue: { color: '#34225f', fontSize: 30, fontWeight: '800', marginTop: 1 },
-  list: { backgroundColor: '#ffffff', borderRadius: 18, paddingHorizontal: 16 },
-  sceneRow: { minHeight: 68, flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#f0ebf8', paddingVertical: 10 },
+  list: {},
+  sceneRow: { minHeight: 68, flexDirection: 'row', alignItems: 'center', backgroundColor: '#ffffff', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, marginBottom: 10, shadowColor: '#34225f', shadowOpacity: 0.06, shadowRadius: 6, elevation: 2 },
   sceneRowSelected: { backgroundColor: '#f3edff', borderRadius: 12 },
+  sceneTileBody: { flex: 1, minHeight: 48, flexDirection: 'row', alignItems: 'center' },
+  sceneDetailButton: { width: 42, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
   sceneNumber: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#f0eaff', alignItems: 'center', justifyContent: 'center', marginRight: 12 },
   sceneNumberText: { color: '#6f4bd8', fontSize: 14, fontWeight: '800' },
   sceneName: { flex: 1, color: '#443467', fontSize: 15, fontWeight: '700' },
@@ -605,6 +804,9 @@ const styles = StyleSheet.create({
   actionSummaryLabel: { color: '#7c6a9e', fontSize: 12, fontWeight: '800', marginBottom: 8 },
   actionSummaryText: { color: '#34225f', fontSize: 14, fontWeight: '700', lineHeight: 22 },
   detailLoadingText: { color: '#443467', fontSize: 13, fontWeight: '700', marginTop: 8 },
+  detailLoading: { minHeight: 160, alignItems: 'center', justifyContent: 'center' },
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(28, 18, 52, 0.45)', justifyContent: 'flex-end' },
+  modalCard: { maxHeight: '86%', backgroundColor: '#ffffff', borderTopLeftRadius: 18, borderTopRightRadius: 18, padding: 20 },
   createCard: { backgroundColor: '#ffffff', borderRadius: 18, padding: 18, marginBottom: 18 },
   createHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
   createTitle: { color: '#34225f', fontSize: 19, fontWeight: '800' },
@@ -630,4 +832,6 @@ const styles = StyleSheet.create({
   createError: { color: '#c35b6f', fontSize: 12, lineHeight: 18, marginTop: 12 },
   createButton: { minHeight: 48, borderRadius: 12, backgroundColor: '#6f4bd8', alignItems: 'center', justifyContent: 'center', marginTop: 16 },
   createButtonText: { color: '#ffffff', fontSize: 14, fontWeight: '800' },
+  editButton: { minHeight: 42, borderRadius: 10, backgroundColor: '#6f4bd8', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 14 },
+  editButtonText: { color: '#ffffff', fontSize: 13, fontWeight: '800', marginLeft: 7 },
 });
