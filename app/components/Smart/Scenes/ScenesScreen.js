@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { Dropdown } from 'react-native-element-dropdown';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../../context/AuthContext';
 import Screen from '../../Screen';
 import { MOCKUP_OPTIONS } from '../SmartScreenSections/SmartScreen.constants';
@@ -20,6 +21,8 @@ import {
   buildSceneInfoRequest,
   buildCreateSceneRequest,
   buildUpdateSceneRequest,
+  buildDeleteSceneRequest,
+  buildBatchDeleteSceneRequest,
   extractCapabilityOptions,
   extractDeviceListOptions,
   getCreateSceneError,
@@ -37,6 +40,8 @@ const WAN_REQUEST_ID = 'c45e846ca23ab42c9ae469d988ae32a96';
 const LAN_MANUAL_TRIGGER_REQUEST_ID = 'd0ed2ce5215a47ec8eb3896c7b65a8ff';
 const LAN_CREATE_REQUEST_ID = '5ca2321d8dbf4f9e8c7bfe8abcb53090';
 const LAN_UPDATE_REQUEST_ID = '1d6b6b3c9f6c4a8aa55c0b46d0b7a901';
+const LAN_DELETE_REQUEST_ID = 'cae4bcaaf0e44700a64e1365af6d80e1';
+const LAN_BATCH_DELETE_REQUEST_ID = '71b4d64d735f4fd5b67f1600ed3df67b';
 const DEVICE_LIST_URL = 'https://one-development.soniciot.com/device_status/';
 const LAN_DEVICE_URL = 'http://192.168.2.115/api/v1.0/device';
 const LAN_CAPABILITY_IDS = {
@@ -73,6 +78,7 @@ export default function ScenesScreen({ route, navigation }) {
     ? MOCKUP_OPTIONS.MOCKUP_1
     : MOCKUP_OPTIONS.MOCKUP_2;
   const { getActiveLanToken, getActiveWanToken } = useAuth();
+  const insets = useSafeAreaInsets();
   const [scenes, setScenes] = useState([]);
   const [selectedScene, setSelectedScene] = useState(null);
   const [selectedSceneDetails, setSelectedSceneDetails] = useState(null);
@@ -90,6 +96,10 @@ export default function ScenesScreen({ route, navigation }) {
   const [createLoading, setCreateLoading] = useState(false);
   const [capabilityLoading, setCapabilityLoading] = useState('');
   const [createError, setCreateError] = useState('');
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedSceneIds, setSelectedSceneIds] = useState([]);
+  const [deletingSceneId, setDeletingSceneId] = useState('');
+  const [batchDeleting, setBatchDeleting] = useState(false);
 
   const getRequestHeaders = useCallback((token) => ({
     'Content-Type': 'application/json',
@@ -483,6 +493,126 @@ export default function ScenesScreen({ route, navigation }) {
     }
   }, [createForm, editingSceneId, getActiveLanToken, getActiveWanToken, getRequestHeaders, loadScenes, resetSceneEditor, selectedMockup, selectedOption]);
 
+  const exitSelectionMode = useCallback(() => {
+    setSelectionMode(false);
+    setSelectedSceneIds([]);
+  }, []);
+
+  const toggleSceneSelection = useCallback((sceneId) => {
+    if (!sceneId) return;
+    setSelectedSceneIds((current) => (
+      current.includes(sceneId) ? current.filter((id) => id !== sceneId) : [...current, sceneId]
+    ));
+  }, []);
+
+  const startSelectionMode = useCallback((sceneId) => {
+    setSelectionMode(true);
+    if (sceneId) setSelectedSceneIds([sceneId]);
+  }, []);
+
+  const deleteScene = useCallback((scene) => {
+    const sceneId = getSceneId(scene);
+    if (!sceneId) {
+      Alert.alert('Scene unavailable', 'This scene is missing its identifier.');
+      return;
+    }
+
+    Alert.alert(
+      'Delete scene',
+      `Are you sure you want to delete "${getSceneName(scene, 0)}"? This cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            setDeletingSceneId(sceneId);
+            try {
+              const isLan = selectedOption === 'LAN';
+              const token = isLan ? await getActiveLanToken() : await getActiveWanToken();
+              const body = buildDeleteSceneRequest({
+                isLan,
+                selectedMockup,
+                sceneId,
+                lanRequestId: LAN_DELETE_REQUEST_ID,
+                wanRequestId: WAN_REQUEST_ID,
+                residenceIds: RESIDENCE_IDS,
+              });
+              const response = await fetch(isLan ? LAN_SCENE_URL : WAN_SCENE_URL, {
+                method: 'POST',
+                headers: getRequestHeaders(token),
+                body: JSON.stringify(body),
+              });
+              const payload = await response.json();
+              if (!response.ok || payload?.success === false || payload?.result?.success === false) {
+                throw new Error(payload?.message || payload?.error || payload?.detail || 'Unable to delete this scene.');
+              }
+              setDetailModalVisible(false);
+              setSelectedScene(null);
+              setSelectedSceneDetails(null);
+              await loadScenes();
+              Alert.alert('Scene deleted', `${getSceneName(scene, 0)} has been removed.`);
+            } catch (error) {
+              console.error('[ScenesScreen] Failed to delete scene:', error);
+              Alert.alert('Unable to delete scene', error?.message || 'Please try again.');
+            } finally {
+              setDeletingSceneId('');
+            }
+          },
+        },
+      ],
+    );
+  }, [getActiveLanToken, getActiveWanToken, getRequestHeaders, loadScenes, selectedMockup, selectedOption]);
+
+  const deleteSelectedScenes = useCallback(() => {
+    if (selectedSceneIds.length === 0) return;
+
+    Alert.alert(
+      'Delete scenes',
+      `Are you sure you want to delete ${selectedSceneIds.length} selected scene${selectedSceneIds.length > 1 ? 's' : ''}? This cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            setBatchDeleting(true);
+            try {
+              const isLan = selectedOption === 'LAN';
+              const token = isLan ? await getActiveLanToken() : await getActiveWanToken();
+              const body = buildBatchDeleteSceneRequest({
+                isLan,
+                selectedMockup,
+                sceneIds: selectedSceneIds,
+                lanRequestId: LAN_BATCH_DELETE_REQUEST_ID,
+                wanRequestId: WAN_REQUEST_ID,
+                residenceIds: RESIDENCE_IDS,
+              });
+              const response = await fetch(isLan ? LAN_SCENE_URL : WAN_SCENE_URL, {
+                method: 'POST',
+                headers: getRequestHeaders(token),
+                body: JSON.stringify(body),
+              });
+              const payload = await response.json();
+              if (!response.ok || payload?.success === false || payload?.result?.success === false) {
+                throw new Error(payload?.message || payload?.error || payload?.detail || 'Unable to delete the selected scenes.');
+              }
+              const deletedCount = selectedSceneIds.length;
+              exitSelectionMode();
+              await loadScenes();
+              Alert.alert('Scenes deleted', `${deletedCount} scene${deletedCount > 1 ? 's' : ''} removed.`);
+            } catch (error) {
+              console.error('[ScenesScreen] Failed to batch delete scenes:', error);
+              Alert.alert('Unable to delete scenes', error?.message || 'Please try again.');
+            } finally {
+              setBatchDeleting(false);
+            }
+          },
+        },
+      ],
+    );
+  }, [exitSelectionMode, getActiveLanToken, getActiveWanToken, getRequestHeaders, loadScenes, selectedMockup, selectedOption, selectedSceneIds]);
+
   useEffect(() => {
     loadScenes();
   }, [loadScenes]);
@@ -568,20 +698,41 @@ export default function ScenesScreen({ route, navigation }) {
             <Text style={styles.title}>Scenes</Text>
             <Text style={styles.subtitle}>{selectedOption} - {selectedMockup === MOCKUP_OPTIONS.MOCKUP_1 ? 'Mockup 1' : 'Mockup 2'}</Text>
           </View>
-          <TouchableOpacity
-            style={styles.headerIcon}
-            onPress={() => {
-              if (showCreate || editingSceneId) {
-                resetSceneEditor();
-              } else {
-                setShowCreate(true);
-                setCreateError('');
-              }
-            }}
-            accessibilityLabel={showCreate || editingSceneId ? 'Close scene editor' : 'Create scene'}
-          >
-            <MaterialCommunityIcons name={showCreate || editingSceneId ? 'close' : 'plus'} size={27} color="#6f4bd8" />
-          </TouchableOpacity>
+          {selectionMode ? (
+            <TouchableOpacity
+              style={styles.headerIcon}
+              onPress={exitSelectionMode}
+              accessibilityLabel="Cancel selection"
+            >
+              <MaterialCommunityIcons name="close" size={27} color="#6f4bd8" />
+            </TouchableOpacity>
+          ) : (
+            <>
+              {scenes.length > 0 && !showCreate && !editingSceneId ? (
+                <TouchableOpacity
+                  style={[styles.headerIcon, styles.headerIconSecondary]}
+                  onPress={() => startSelectionMode()}
+                  accessibilityLabel="Select scenes to delete"
+                >
+                  <MaterialCommunityIcons name="checkbox-multiple-marked-outline" size={24} color="#6f4bd8" />
+                </TouchableOpacity>
+              ) : null}
+              <TouchableOpacity
+                style={styles.headerIcon}
+                onPress={() => {
+                  if (showCreate || editingSceneId) {
+                    resetSceneEditor();
+                  } else {
+                    setShowCreate(true);
+                    setCreateError('');
+                  }
+                }}
+                accessibilityLabel={showCreate || editingSceneId ? 'Close scene editor' : 'Create scene'}
+              >
+                <MaterialCommunityIcons name={showCreate || editingSceneId ? 'close' : 'plus'} size={27} color="#6f4bd8" />
+              </TouchableOpacity>
+            </>
+          )}
         </View>
 
         <View style={styles.totalCard}>
@@ -660,30 +811,57 @@ export default function ScenesScreen({ route, navigation }) {
               {scenes.map((scene, index) => {
                 const sceneId = getSceneId(scene);
                 const isTriggering = triggeringSceneId === sceneId;
+                const isDeleting = deletingSceneId === sceneId;
+                const isSelected = selectedSceneIds.includes(sceneId);
 
                 return (
                   <View
                     key={sceneId || `${getSceneName(scene, index)}-${index}`}
-                    style={[styles.sceneRow, isTriggering && styles.sceneRowSelected]}
+                    style={[styles.sceneRow, (isTriggering || isSelected) && styles.sceneRowSelected]}
                   >
                     <TouchableOpacity
                       style={styles.sceneTileBody}
-                      onPress={() => triggerScene(scene)}
-                      disabled={Boolean(triggeringSceneId)}
+                      onPress={() => (selectionMode ? toggleSceneSelection(sceneId) : triggerScene(scene))}
+                      onLongPress={() => (selectionMode ? undefined : startSelectionMode(sceneId))}
+                      disabled={!selectionMode && (Boolean(triggeringSceneId) || isDeleting)}
                       activeOpacity={0.8}
-                      accessibilityLabel={`Run ${getSceneName(scene, index)}`}
+                      accessibilityLabel={selectionMode ? `Select ${getSceneName(scene, index)}` : `Run ${getSceneName(scene, index)}`}
                     >
-                      <View style={styles.sceneNumber}><Text style={styles.sceneNumberText}>{index + 1}</Text></View>
+                      {selectionMode ? (
+                        <View style={[styles.sceneCheckbox, isSelected && styles.sceneCheckboxChecked]}>
+                          {isSelected ? <MaterialCommunityIcons name="check" size={16} color="#ffffff" /> : null}
+                        </View>
+                      ) : (
+                        <View style={styles.sceneNumber}><Text style={styles.sceneNumberText}>{index + 1}</Text></View>
+                      )}
                       <Text style={styles.sceneName}>{getSceneName(scene, index)}</Text>
-                      {isTriggering ? <ActivityIndicator size="small" color="#6f4bd8" /> : <MaterialCommunityIcons name="play-circle-outline" size={22} color="#6f4bd8" />}
+                      {isDeleting ? (
+                        <ActivityIndicator size="small" color="#c35b6f" />
+                      ) : isTriggering ? (
+                        <ActivityIndicator size="small" color="#6f4bd8" />
+                      ) : !selectionMode ? (
+                        <MaterialCommunityIcons name="play-circle-outline" size={22} color="#6f4bd8" />
+                      ) : null}
                     </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.sceneDetailButton}
-                      onPress={() => loadSceneDetails(scene, true)}
-                      accessibilityLabel={`View details for ${getSceneName(scene, index)}`}
-                    >
-                      <MaterialCommunityIcons name="chevron-right" size={24} color="#a28bcf" />
-                    </TouchableOpacity>
+                    {selectionMode ? null : (
+                      <>
+                        <TouchableOpacity
+                          style={styles.sceneDeleteButton}
+                          onPress={() => deleteScene(scene)}
+                          disabled={isDeleting}
+                          accessibilityLabel={`Delete ${getSceneName(scene, index)}`}
+                        >
+                          <MaterialCommunityIcons name="trash-can-outline" size={20} color="#c35b6f" />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.sceneDetailButton}
+                          onPress={() => loadSceneDetails(scene, true)}
+                          accessibilityLabel={`View details for ${getSceneName(scene, index)}`}
+                        >
+                          <MaterialCommunityIcons name="chevron-right" size={24} color="#a28bcf" />
+                        </TouchableOpacity>
+                      </>
+                    )}
                   </View>
                 );
               })}
@@ -691,6 +869,27 @@ export default function ScenesScreen({ route, navigation }) {
           </>
         )}
       </ScrollView>
+
+      {selectionMode ? (
+        <View style={[styles.selectionBar, { marginBottom: 100 + insets.bottom }]}>
+          <Text style={styles.selectionBarText}>{selectedSceneIds.length} selected</Text>
+          <TouchableOpacity
+            style={[styles.selectionDeleteButton, (selectedSceneIds.length === 0 || batchDeleting) && styles.selectionDeleteButtonDisabled]}
+            onPress={deleteSelectedScenes}
+            disabled={selectedSceneIds.length === 0 || batchDeleting}
+            accessibilityLabel="Delete selected scenes"
+          >
+            {batchDeleting ? (
+              <ActivityIndicator size="small" color="#ffffff" />
+            ) : (
+              <>
+                <MaterialCommunityIcons name="trash-can-outline" size={18} color="#ffffff" />
+                <Text style={styles.selectionDeleteText}>Delete</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        </View>
+      ) : null}
 
       <Modal
         transparent
@@ -728,10 +927,27 @@ export default function ScenesScreen({ route, navigation }) {
                   </View>
                   <Text style={styles.detailSceneName}>{details.name}</Text>
                   <Text style={styles.detailDescription}>{details.description}</Text>
-                  <TouchableOpacity style={styles.editButton} onPress={openSceneEditor} accessibilityLabel="Edit scene">
-                    <MaterialCommunityIcons name="pencil-outline" size={18} color="#ffffff" />
-                    <Text style={styles.editButtonText}>Edit scene</Text>
-                  </TouchableOpacity>
+                  <View style={styles.detailActionRow}>
+                    <TouchableOpacity style={[styles.editButton, styles.detailActionButton, styles.detailActionButtonSpacing]} onPress={openSceneEditor} accessibilityLabel="Edit scene">
+                      <MaterialCommunityIcons name="pencil-outline" size={18} color="#ffffff" />
+                      <Text style={styles.editButtonText}>Edit scene</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.deleteSceneButton, styles.detailActionButton]}
+                      onPress={() => deleteScene(selectedSceneDetails || selectedScene)}
+                      disabled={deletingSceneId === getSceneId(selectedSceneDetails || selectedScene)}
+                      accessibilityLabel="Delete scene"
+                    >
+                      {deletingSceneId === getSceneId(selectedSceneDetails || selectedScene) ? (
+                        <ActivityIndicator size="small" color="#c35b6f" />
+                      ) : (
+                        <>
+                          <MaterialCommunityIcons name="trash-can-outline" size={18} color="#c35b6f" />
+                          <Text style={styles.deleteSceneButtonText}>Delete</Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
+                  </View>
                   <View style={styles.deviceSummaryCard}>
                     <Text style={styles.deviceSummaryLabel}>Trigger</Text>
                     {details.triggerDetails.map((text, idx) => <View key={`trigger-${text}-${idx}`} style={styles.devicePill}><MaterialCommunityIcons name="motion-sensor" size={15} color="#6f4bd8" /><Text style={styles.devicePillText}>{text}</Text></View>)}
@@ -759,13 +975,14 @@ export default function ScenesScreen({ route, navigation }) {
 const styles = StyleSheet.create({
   screen: { backgroundColor: '#f8f6fc' },
   scroll: { flex: 1 },
-  content: { flexGrow: 1, padding: 18, paddingBottom: 72 },
+  content: { flexGrow: 1, padding: 18, paddingBottom: 96 },
   headerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 22 },
   backButton: { width: 42, height: 42, borderRadius: 21, backgroundColor: '#ffffff', alignItems: 'center', justifyContent: 'center' },
   headerTextBlock: { flex: 1, marginLeft: 12 },
   title: { color: '#34225f', fontSize: 26, fontWeight: '800' },
   subtitle: { color: '#8975b5', fontSize: 13, fontWeight: '600', marginTop: 3 },
   headerIcon: { width: 46, height: 46, borderRadius: 15, backgroundColor: '#efe6ff', alignItems: 'center', justifyContent: 'center' },
+  headerIconSecondary: { marginRight: 10 },
   totalCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#ffffff', borderRadius: 18, padding: 18, marginBottom: 18, shadowColor: '#6f4bd8', shadowOpacity: 0.1, shadowRadius: 12, elevation: 3 },
   totalIcon: { width: 58, height: 58, borderRadius: 17, backgroundColor: '#f0eaff', alignItems: 'center', justifyContent: 'center', marginRight: 15 },
   totalLabel: { color: '#7c6a9e', fontSize: 13, fontWeight: '700' },
@@ -775,8 +992,16 @@ const styles = StyleSheet.create({
   sceneRowSelected: { backgroundColor: '#f3edff', borderRadius: 12 },
   sceneTileBody: { flex: 1, minHeight: 48, flexDirection: 'row', alignItems: 'center' },
   sceneDetailButton: { width: 42, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
+  sceneDeleteButton: { width: 36, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
   sceneNumber: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#f0eaff', alignItems: 'center', justifyContent: 'center', marginRight: 12 },
   sceneNumberText: { color: '#6f4bd8', fontSize: 14, fontWeight: '800' },
+  sceneCheckbox: { width: 24, height: 24, borderRadius: 6, borderWidth: 2, borderColor: '#c3b3e8', alignItems: 'center', justifyContent: 'center', marginRight: 14 },
+  sceneCheckboxChecked: { backgroundColor: '#6f4bd8', borderColor: '#6f4bd8' },
+  selectionBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#34225f', borderRadius: 16, marginHorizontal: 18, marginBottom: 18, paddingHorizontal: 18, paddingVertical: 14, shadowColor: '#000000', shadowOpacity: 0.2, shadowRadius: 10, elevation: 6 },
+  selectionBarText: { color: '#ffffff', fontSize: 14, fontWeight: '700' },
+  selectionDeleteButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#c35b6f', borderRadius: 10, paddingHorizontal: 16, paddingVertical: 10 },
+  selectionDeleteButtonDisabled: { opacity: 0.5 },
+  selectionDeleteText: { color: '#ffffff', fontSize: 13, fontWeight: '800', marginLeft: 7 },
   sceneName: { flex: 1, color: '#443467', fontSize: 15, fontWeight: '700' },
   stateCard: { alignItems: 'center', backgroundColor: '#ffffff', borderRadius: 18, padding: 28 },
   stateTitle: { color: '#443467', fontSize: 17, fontWeight: '800', marginTop: 10 },
@@ -834,4 +1059,9 @@ const styles = StyleSheet.create({
   createButtonText: { color: '#ffffff', fontSize: 14, fontWeight: '800' },
   editButton: { minHeight: 42, borderRadius: 10, backgroundColor: '#6f4bd8', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 14 },
   editButtonText: { color: '#ffffff', fontSize: 13, fontWeight: '800', marginLeft: 7 },
+  detailActionRow: { flexDirection: 'row', marginBottom: 14 },
+  detailActionButton: { flex: 1, marginBottom: 0 },
+  detailActionButtonSpacing: { marginRight: 10 },
+  deleteSceneButton: { minHeight: 42, borderRadius: 10, backgroundColor: '#fbe9ec', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginRight: 0 },
+  deleteSceneButtonText: { color: '#c35b6f', fontSize: 13, fontWeight: '800', marginLeft: 7 },
 });

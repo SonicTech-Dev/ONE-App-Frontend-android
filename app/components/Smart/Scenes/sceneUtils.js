@@ -219,6 +219,68 @@ export const buildSceneInfoRequest = ({
   };
 };
 
+export const buildDeleteSceneRequest = ({
+  isLan,
+  selectedMockup,
+  sceneId,
+  lanRequestId,
+  wanRequestId,
+  residenceIds,
+}) => {
+  if (isLan) {
+    return {
+      command: 'delete_scene_info',
+      id: lanRequestId,
+      param: {
+        scene_id: sceneId,
+      },
+    };
+  }
+
+  const residenceId = residenceIds?.[selectedMockup] || Object.values(residenceIds || {})[0];
+
+  return {
+    command: 'delete_scene_info',
+    id: wanRequestId,
+    param: {
+      residence_id: residenceId,
+      scene_id: sceneId,
+    },
+  };
+};
+
+export const buildBatchDeleteSceneRequest = ({
+  isLan,
+  selectedMockup,
+  sceneIds,
+  lanRequestId,
+  wanRequestId,
+  residenceIds,
+}) => {
+  const scenes = (sceneIds || []).map((sceneId) => ({ scene_id: sceneId }));
+
+  if (isLan) {
+    return {
+      command: 'batch_delete_scene_info',
+      id: lanRequestId,
+      param: {
+        scenes,
+      },
+    };
+  }
+
+  const residenceId = residenceIds?.[selectedMockup] || Object.values(residenceIds || {})[0];
+
+  return {
+    command: 'batch_delete_scene_info',
+    id: wanRequestId,
+    param: {
+      residence_id: residenceId,
+      scenes,
+    },
+  };
+};
+
 const getPayloadArray = (payload) => {
   const candidates = [
     payload?.result,
