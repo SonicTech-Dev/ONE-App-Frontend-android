@@ -23,13 +23,19 @@ import {
   buildUpdateSceneRequest,
   buildDeleteSceneRequest,
   buildBatchDeleteSceneRequest,
+  buildSceneHistoryRequest,
+  buildDeleteSceneHistoryRequest,
+  buildBatchDeleteSceneHistoryRequest,
   extractCapabilityOptions,
   extractDeviceListOptions,
+  extractSceneHistoryRecords,
   getCreateSceneError,
   extractSceneDetailPayload,
   getSceneEntityId,
+  getSceneHistoryRecordId,
   getSceneId,
   buildManualTriggerSceneRequest,
+  resolveSceneHistoryDetails,
   resolveSceneUserDetails,
 } from './sceneUtils';
 
@@ -42,6 +48,10 @@ const LAN_CREATE_REQUEST_ID = '5ca2321d8dbf4f9e8c7bfe8abcb53090';
 const LAN_UPDATE_REQUEST_ID = '1d6b6b3c9f6c4a8aa55c0b46d0b7a901';
 const LAN_DELETE_REQUEST_ID = 'cae4bcaaf0e44700a64e1365af6d80e1';
 const LAN_BATCH_DELETE_REQUEST_ID = '71b4d64d735f4fd5b67f1600ed3df67b';
+const LAN_HISTORY_REQUEST_ID = 'de14cf98d5ca4c75a3f235c1457596b2';
+const LAN_HISTORY_DELETE_REQUEST_ID = '4a54cc456da742b2a4f860dcfb18ced5';
+const LAN_HISTORY_BATCH_DELETE_REQUEST_ID = '77b2bf8a1b2041ec9c6a75d69c97f2db';
+const HISTORY_PAGE_SIZE = 10;
 const DEVICE_LIST_URL = 'https://one-development.soniciot.com/device_status/';
 const LAN_DEVICE_URL = 'http://192.168.2.115/api/v1.0/device';
 const LAN_CAPABILITY_IDS = {
@@ -100,6 +110,15 @@ export default function ScenesScreen({ route, navigation }) {
   const [selectedSceneIds, setSelectedSceneIds] = useState([]);
   const [deletingSceneId, setDeletingSceneId] = useState('');
   const [batchDeleting, setBatchDeleting] = useState(false);
+  const [historyRecords, setHistoryRecords] = useState([]);
+  const [historyPageIndex, setHistoryPageIndex] = useState(1);
+  const [historyHasMore, setHistoryHasMore] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState('');
+  const [historySelectionMode, setHistorySelectionMode] = useState(false);
+  const [historySelectedIds, setHistorySelectedIds] = useState([]);
+  const [historyDeletingId, setHistoryDeletingId] = useState('');
+  const [historyBatchDeleting, setHistoryBatchDeleting] = useState(false);
 
   const getRequestHeaders = useCallback((token) => ({
     'Content-Type': 'application/json',
@@ -613,6 +632,183 @@ export default function ScenesScreen({ route, navigation }) {
     );
   }, [exitSelectionMode, getActiveLanToken, getActiveWanToken, getRequestHeaders, loadScenes, selectedMockup, selectedOption, selectedSceneIds]);
 
+  const exitHistorySelectionMode = useCallback(() => {
+    setHistorySelectionMode(false);
+    setHistorySelectedIds([]);
+  }, []);
+
+  const resetHistoryState = useCallback(() => {
+    setHistoryRecords([]);
+    setHistoryPageIndex(1);
+    setHistoryHasMore(false);
+    setHistoryError('');
+    exitHistorySelectionMode();
+  }, [exitHistorySelectionMode]);
+
+  const fetchSceneHistory = useCallback(async (scene, targetPageIndex) => {
+    const sceneId = getSceneId(scene);
+    if (!sceneId) return;
+
+    setHistoryLoading(true);
+    setHistoryError('');
+    try {
+      const isLan = selectedOption === 'LAN';
+      const token = isLan ? await getActiveLanToken() : await getActiveWanToken();
+      const body = buildSceneHistoryRequest({
+        isLan,
+        selectedMockup,
+        sceneId,
+        pageIndex: targetPageIndex,
+        pageSize: HISTORY_PAGE_SIZE,
+        lanRequestId: LAN_HISTORY_REQUEST_ID,
+        wanRequestId: WAN_REQUEST_ID,
+        residenceIds: RESIDENCE_IDS,
+      });
+      const response = await fetch(isLan ? LAN_SCENE_URL : WAN_SCENE_URL, {
+        method: 'POST',
+        headers: getRequestHeaders(token),
+        body: JSON.stringify(body),
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload?.message || payload?.error || payload?.detail || `Unable to load scene history (${response.status})`);
+      }
+      const records = extractSceneHistoryRecords(payload);
+      console.log('[ScenesScreen] get_scene_history response sample:', JSON.stringify(records[0] || payload, null, 2));
+      if (records.length === 0 && targetPageIndex > 1) {
+        setHistoryHasMore(false);
+        return;
+      }
+      setHistoryRecords(records);
+      setHistoryPageIndex(targetPageIndex);
+      setHistoryHasMore(records.length === HISTORY_PAGE_SIZE);
+      setHistorySelectedIds([]);
+    } catch (error) {
+      console.error('[ScenesScreen] Failed to load scene history:', error);
+      setHistoryError(error?.message || 'Unable to load scene history right now.');
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [getActiveLanToken, getActiveWanToken, getRequestHeaders, selectedMockup, selectedOption]);
+
+  const goToNextHistoryPage = useCallback(() => {
+    if (!historyHasMore || historyLoading) return;
+    fetchSceneHistory(selectedSceneDetails || selectedScene, historyPageIndex + 1);
+  }, [fetchSceneHistory, historyHasMore, historyLoading, historyPageIndex, selectedScene, selectedSceneDetails]);
+
+  const goToPreviousHistoryPage = useCallback(() => {
+    if (historyPageIndex <= 1 || historyLoading) return;
+    fetchSceneHistory(selectedSceneDetails || selectedScene, historyPageIndex - 1);
+  }, [fetchSceneHistory, historyLoading, historyPageIndex, selectedScene, selectedSceneDetails]);
+
+  const toggleHistorySelection = useCallback((recordId) => {
+    if (!recordId) return;
+    setHistorySelectedIds((current) => (
+      current.includes(recordId) ? current.filter((id) => id !== recordId) : [...current, recordId]
+    ));
+  }, []);
+
+  const startHistorySelectionMode = useCallback((recordId) => {
+    setHistorySelectionMode(true);
+    if (recordId) setHistorySelectedIds([recordId]);
+  }, []);
+
+  const deleteHistoryRecord = useCallback((record) => {
+    const recordId = getSceneHistoryRecordId(record);
+    if (!recordId) return;
+
+    Alert.alert(
+      'Delete history entry',
+      'Are you sure you want to delete this history entry? This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            setHistoryDeletingId(recordId);
+            try {
+              const isLan = selectedOption === 'LAN';
+              const token = isLan ? await getActiveLanToken() : await getActiveWanToken();
+              const body = buildDeleteSceneHistoryRequest({
+                isLan,
+                selectedMockup,
+                sceneRecordId: recordId,
+                lanRequestId: LAN_HISTORY_DELETE_REQUEST_ID,
+                wanRequestId: WAN_REQUEST_ID,
+                residenceIds: RESIDENCE_IDS,
+              });
+              const response = await fetch(isLan ? LAN_SCENE_URL : WAN_SCENE_URL, {
+                method: 'POST',
+                headers: getRequestHeaders(token),
+                body: JSON.stringify(body),
+              });
+              const payload = await response.json();
+              if (!response.ok || payload?.success === false || payload?.result?.success === false) {
+                console.warn('[ScenesScreen] delete_scene_history rejected:', { status: response.status, payload: JSON.stringify(payload) });
+                throw new Error(getCreateSceneError(payload, 'Unable to delete this history entry.'));
+              }
+              await fetchSceneHistory(selectedSceneDetails || selectedScene, historyPageIndex);
+            } catch (error) {
+              console.error('[ScenesScreen] Failed to delete scene history entry:', error);
+              Alert.alert('Unable to delete entry', error?.message || 'Please try again.');
+            } finally {
+              setHistoryDeletingId('');
+            }
+          },
+        },
+      ],
+    );
+  }, [fetchSceneHistory, getActiveLanToken, getActiveWanToken, getRequestHeaders, historyPageIndex, selectedMockup, selectedOption, selectedScene, selectedSceneDetails]);
+
+  const deleteSelectedHistoryRecords = useCallback(() => {
+    if (historySelectedIds.length === 0) return;
+
+    Alert.alert(
+      'Delete history entries',
+      `Are you sure you want to delete ${historySelectedIds.length} selected entr${historySelectedIds.length > 1 ? 'ies' : 'y'}? This cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            setHistoryBatchDeleting(true);
+            try {
+              const isLan = selectedOption === 'LAN';
+              const token = isLan ? await getActiveLanToken() : await getActiveWanToken();
+              const body = buildBatchDeleteSceneHistoryRequest({
+                isLan,
+                selectedMockup,
+                sceneRecordIds: historySelectedIds,
+                lanRequestId: LAN_HISTORY_BATCH_DELETE_REQUEST_ID,
+                wanRequestId: WAN_REQUEST_ID,
+                residenceIds: RESIDENCE_IDS,
+              });
+              const response = await fetch(isLan ? LAN_SCENE_URL : WAN_SCENE_URL, {
+                method: 'POST',
+                headers: getRequestHeaders(token),
+                body: JSON.stringify(body),
+              });
+              const payload = await response.json();
+              if (!response.ok || payload?.success === false || payload?.result?.success === false) {
+                console.warn('[ScenesScreen] batch_delete_scene_history rejected:', { status: response.status, payload: JSON.stringify(payload) });
+                throw new Error(getCreateSceneError(payload, 'Unable to delete the selected entries.'));
+              }
+              exitHistorySelectionMode();
+              await fetchSceneHistory(selectedSceneDetails || selectedScene, historyPageIndex);
+            } catch (error) {
+              console.error('[ScenesScreen] Failed to batch delete scene history:', error);
+              Alert.alert('Unable to delete entries', error?.message || 'Please try again.');
+            } finally {
+              setHistoryBatchDeleting(false);
+            }
+          },
+        },
+      ],
+    );
+  }, [exitHistorySelectionMode, fetchSceneHistory, getActiveLanToken, getActiveWanToken, getRequestHeaders, historyPageIndex, historySelectedIds, selectedMockup, selectedOption, selectedScene, selectedSceneDetails]);
+
   useEffect(() => {
     loadScenes();
   }, [loadScenes]);
@@ -620,6 +816,15 @@ export default function ScenesScreen({ route, navigation }) {
   useEffect(() => {
     if ((showCreate || editingSceneId) && deviceOptions.length === 0) loadDevicesForCreate();
   }, [deviceOptions.length, editingSceneId, loadDevicesForCreate, showCreate]);
+
+  useEffect(() => {
+    if (detailModalVisible && selectedScene) {
+      resetHistoryState();
+      fetchSceneHistory(selectedScene, 1);
+    } else if (!detailModalVisible) {
+      resetHistoryState();
+    }
+  }, [detailModalVisible, selectedScene, fetchSceneHistory, resetHistoryState]);
 
   const renderCreateSelector = (kind, title, iconName) => {
     const device = createDevices[kind];
@@ -962,6 +1167,147 @@ export default function ScenesScreen({ route, navigation }) {
                     <Text style={styles.actionSummaryLabel}>Scene behavior</Text>
                     <Text style={styles.actionSummaryText}>{details.summaryText}</Text>
                   </View>
+
+                  <View style={styles.historyCard}>
+                    <View style={styles.historyHeaderRow}>
+                      <View style={styles.historyHeaderTitleRow}>
+                        <MaterialCommunityIcons name="history" size={18} color="#6f4bd8" />
+                        <Text style={styles.historyTitle}>History</Text>
+                      </View>
+                      {historyRecords.length > 0 ? (
+                        historySelectionMode ? (
+                          <TouchableOpacity onPress={exitHistorySelectionMode} accessibilityLabel="Cancel history selection">
+                            <Text style={styles.historySelectToggle}>Cancel</Text>
+                          </TouchableOpacity>
+                        ) : (
+                          <TouchableOpacity onPress={() => startHistorySelectionMode()} accessibilityLabel="Select history entries">
+                            <Text style={styles.historySelectToggle}>Select</Text>
+                          </TouchableOpacity>
+                        )
+                      ) : null}
+                    </View>
+
+                    {historyLoading ? (
+                      <View style={styles.historyLoading}>
+                        <ActivityIndicator size="small" color="#6f4bd8" />
+                        <Text style={styles.historyLoadingText}>Loading history...</Text>
+                      </View>
+                    ) : historyError ? (
+                      <View style={styles.historyEmptyState}>
+                        <MaterialCommunityIcons name="cloud-alert" size={26} color="#c35b6f" />
+                        <Text style={styles.historyEmptyText}>{historyError}</Text>
+                        <TouchableOpacity style={styles.historyRetryButton} onPress={() => fetchSceneHistory(selectedSceneDetails || selectedScene, historyPageIndex)}>
+                          <Text style={styles.historyRetryText}>Try again</Text>
+                        </TouchableOpacity>
+                      </View>
+                    ) : historyRecords.length === 0 ? (
+                      <View style={styles.historyEmptyState}>
+                        <MaterialCommunityIcons name="history" size={26} color="#8b78b8" />
+                        <Text style={styles.historyEmptyText}>No history yet for this scene.</Text>
+                      </View>
+                    ) : (
+                      <>
+                        {historyRecords.map((record, idx) => {
+                          const recordId = getSceneHistoryRecordId(record);
+                          const recordKey = recordId || `history-${idx}`;
+                          const isSelected = historySelectedIds.includes(recordId);
+                          const isDeleting = historyDeletingId === recordId;
+                          const info = resolveSceneHistoryDetails(record);
+
+                          return (
+                            <TouchableOpacity
+                              key={recordKey}
+                              style={[styles.historyRow, isSelected && styles.historyRowSelected]}
+                              activeOpacity={0.8}
+                              onPress={() => (historySelectionMode ? toggleHistorySelection(recordId) : undefined)}
+                              onLongPress={() => (historySelectionMode ? undefined : startHistorySelectionMode(recordId))}
+                              disabled={!historySelectionMode}
+                            >
+                              {historySelectionMode ? (
+                                <View style={[styles.historyCheckbox, isSelected && styles.historyCheckboxChecked]}>
+                                  {isSelected ? <MaterialCommunityIcons name="check" size={14} color="#ffffff" /> : null}
+                                </View>
+                              ) : (
+                                <View style={[
+                                  styles.historyStatusIcon,
+                                  info.isFailure ? styles.historyStatusIconFailure : styles.historyStatusIconSuccess,
+                                ]}>
+                                  <MaterialCommunityIcons
+                                    name={info.isFailure ? 'close' : 'check'}
+                                    size={13}
+                                    color="#ffffff"
+                                  />
+                                </View>
+                              )}
+                              <View style={styles.historyRowBody}>
+                                <Text style={styles.historyTimestamp}>{info.timestamp || 'Unknown time'}</Text>
+                                {info.triggerSource ? <Text style={styles.historySource}>{String(info.triggerSource).replace(/[_-]+/g, ' ')}</Text> : null}
+                                {info.message ? <Text style={styles.historyMessage}>{info.message}</Text> : null}
+                              </View>
+                              {!historySelectionMode ? (
+                                isDeleting ? (
+                                  <ActivityIndicator size="small" color="#c35b6f" />
+                                ) : (
+                                  <TouchableOpacity
+                                    style={styles.historyDeleteButton}
+                                    onPress={() => deleteHistoryRecord(record)}
+                                    accessibilityLabel="Delete history entry"
+                                  >
+                                    <MaterialCommunityIcons name="trash-can-outline" size={18} color="#c35b6f" />
+                                  </TouchableOpacity>
+                                )
+                              ) : null}
+                            </TouchableOpacity>
+                          );
+                        })}
+
+                        <View style={styles.historyPaginationRow}>
+                          <TouchableOpacity
+                            style={[styles.historyPageButton, historyPageIndex <= 1 && styles.historyPageButtonDisabled]}
+                            onPress={goToPreviousHistoryPage}
+                            disabled={historyPageIndex <= 1 || historyLoading}
+                            accessibilityLabel="Previous history page"
+                          >
+                            <MaterialCommunityIcons name="chevron-left" size={18} color={historyPageIndex <= 1 ? '#c3b3e8' : '#6f4bd8'} />
+                            <Text style={[styles.historyPageButtonText, historyPageIndex <= 1 && styles.historyPageButtonTextDisabled]}>Previous</Text>
+                          </TouchableOpacity>
+                          <Text style={styles.historyPageIndicator}>Page {historyPageIndex}</Text>
+                          {historyHasMore ? (
+                            <TouchableOpacity
+                              style={styles.historyPageButton}
+                              onPress={goToNextHistoryPage}
+                              disabled={historyLoading}
+                              accessibilityLabel="Next history page"
+                            >
+                              <Text style={styles.historyPageButtonText}>Next</Text>
+                              <MaterialCommunityIcons name="chevron-right" size={18} color="#6f4bd8" />
+                            </TouchableOpacity>
+                          ) : <View style={styles.historyPageButtonPlaceholder} />}
+                        </View>
+
+                        {historySelectionMode ? (
+                          <View style={styles.historySelectionBar}>
+                            <Text style={styles.historySelectionBarText}>{historySelectedIds.length} selected</Text>
+                            <TouchableOpacity
+                              style={[styles.historySelectionDeleteButton, (historySelectedIds.length === 0 || historyBatchDeleting) && styles.selectionDeleteButtonDisabled]}
+                              onPress={deleteSelectedHistoryRecords}
+                              disabled={historySelectedIds.length === 0 || historyBatchDeleting}
+                              accessibilityLabel="Delete selected history entries"
+                            >
+                              {historyBatchDeleting ? (
+                                <ActivityIndicator size="small" color="#ffffff" />
+                              ) : (
+                                <>
+                                  <MaterialCommunityIcons name="trash-can-outline" size={16} color="#ffffff" />
+                                  <Text style={styles.historySelectionDeleteText}>Delete</Text>
+                                </>
+                              )}
+                            </TouchableOpacity>
+                          </View>
+                        ) : null}
+                      </>
+                    )}
+                  </View>
                 </ScrollView>
               );
             })() : null}
@@ -1028,6 +1374,40 @@ const styles = StyleSheet.create({
   actionSummaryCard: { backgroundColor: '#f5f8ff', borderRadius: 14, padding: 14 },
   actionSummaryLabel: { color: '#7c6a9e', fontSize: 12, fontWeight: '800', marginBottom: 8 },
   actionSummaryText: { color: '#34225f', fontSize: 14, fontWeight: '700', lineHeight: 22 },
+  historyCard: { backgroundColor: '#faf8ff', borderRadius: 14, padding: 14, marginTop: 12 },
+  historyHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
+  historyHeaderTitleRow: { flexDirection: 'row', alignItems: 'center' },
+  historyTitle: { color: '#443467', fontSize: 14, fontWeight: '800', marginLeft: 7 },
+  historySelectToggle: { color: '#6f4bd8', fontSize: 12, fontWeight: '800' },
+  historyLoading: { alignItems: 'center', justifyContent: 'center', paddingVertical: 20 },
+  historyLoadingText: { color: '#8975a8', fontSize: 12, marginTop: 8 },
+  historyEmptyState: { alignItems: 'center', justifyContent: 'center', paddingVertical: 20 },
+  historyEmptyText: { color: '#8975a8', fontSize: 12, textAlign: 'center', marginTop: 8 },
+  historyRetryButton: { marginTop: 10, backgroundColor: '#6f4bd8', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8 },
+  historyRetryText: { color: '#ffffff', fontSize: 12, fontWeight: '800' },
+  historyRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#ffffff', borderRadius: 12, padding: 10, marginBottom: 8 },
+  historyRowSelected: { backgroundColor: '#efe6ff' },
+  historyRowBody: { flex: 1, marginLeft: 10 },
+  historyTimestamp: { color: '#34225f', fontSize: 13, fontWeight: '800' },
+  historySource: { color: '#7c6a9e', fontSize: 11, fontWeight: '700', marginTop: 2, textTransform: 'capitalize' },
+  historyMessage: { color: '#6e5f93', fontSize: 12, marginTop: 3 },
+  historyStatusIcon: { width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
+  historyStatusIconSuccess: { backgroundColor: '#4caf7d' },
+  historyStatusIconFailure: { backgroundColor: '#c35b6f' },
+  historyDeleteButton: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center' },
+  historyCheckbox: { width: 22, height: 22, borderRadius: 6, borderWidth: 2, borderColor: '#c3b3e8', alignItems: 'center', justifyContent: 'center' },
+  historyCheckboxChecked: { backgroundColor: '#6f4bd8', borderColor: '#6f4bd8' },
+  historyPaginationRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 },
+  historyPageButton: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6, paddingHorizontal: 4 },
+  historyPageButtonDisabled: { opacity: 0.4 },
+  historyPageButtonText: { color: '#6f4bd8', fontSize: 12, fontWeight: '800' },
+  historyPageButtonTextDisabled: { color: '#c3b3e8' },
+  historyPageButtonPlaceholder: { width: 60 },
+  historyPageIndicator: { color: '#7c6a9e', fontSize: 12, fontWeight: '700' },
+  historySelectionBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#34225f', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, marginTop: 10 },
+  historySelectionBarText: { color: '#ffffff', fontSize: 12, fontWeight: '700' },
+  historySelectionDeleteButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#c35b6f', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 },
+  historySelectionDeleteText: { color: '#ffffff', fontSize: 12, fontWeight: '800', marginLeft: 6 },
   detailLoadingText: { color: '#443467', fontSize: 13, fontWeight: '700', marginTop: 8 },
   detailLoading: { minHeight: 160, alignItems: 'center', justifyContent: 'center' },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(28, 18, 52, 0.45)', justifyContent: 'flex-end' },

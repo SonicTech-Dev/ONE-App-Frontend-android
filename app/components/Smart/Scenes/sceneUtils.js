@@ -281,6 +281,188 @@ export const buildBatchDeleteSceneRequest = ({
   };
 };
 
+export const buildSceneHistoryRequest = ({
+  isLan,
+  selectedMockup,
+  sceneId,
+  pageIndex,
+  pageSize,
+  lanRequestId,
+  wanRequestId,
+  residenceIds,
+}) => {
+  if (isLan) {
+    return {
+      command: 'get_scene_history',
+      id: lanRequestId,
+      param: {
+        page_size: pageSize,
+        page_index: pageIndex,
+        scene_id: sceneId,
+      },
+    };
+  }
+
+  const residenceId = residenceIds?.[selectedMockup] || Object.values(residenceIds || {})[0];
+
+  return {
+    command: 'get_scene_history',
+    id: wanRequestId,
+    param: {
+      page_size: pageSize,
+      page_index: pageIndex,
+      scene_id: sceneId,
+      residence_id: residenceId,
+    },
+  };
+};
+
+export const buildDeleteSceneHistoryRequest = ({
+  isLan,
+  selectedMockup,
+  sceneRecordId,
+  lanRequestId,
+  wanRequestId,
+  residenceIds,
+}) => {
+  if (isLan) {
+    return {
+      command: 'delete_scene_history',
+      id: lanRequestId,
+      param: {
+        scene_record_id: Number(sceneRecordId),
+      },
+    };
+  }
+
+  const residenceId = residenceIds?.[selectedMockup] || Object.values(residenceIds || {})[0];
+
+  return {
+    command: 'delete_scene_history',
+    id: wanRequestId,
+    param: {
+      scene_record_id: String(sceneRecordId),
+      residence_id: residenceId,
+    },
+  };
+};
+
+export const buildBatchDeleteSceneHistoryRequest = ({
+  isLan,
+  selectedMockup,
+  sceneRecordIds,
+  lanRequestId,
+  wanRequestId,
+  residenceIds,
+}) => {
+  const sceneRecords = (sceneRecordIds || []).map((sceneRecordId) => ({
+    scene_record_id: isLan ? Number(sceneRecordId) : String(sceneRecordId),
+  }));
+
+  if (isLan) {
+    return {
+      command: 'batch_delete_scene_history',
+      id: lanRequestId,
+      param: {
+        scene_records: sceneRecords,
+      },
+    };
+  }
+
+  const residenceId = residenceIds?.[selectedMockup] || Object.values(residenceIds || {})[0];
+
+  return {
+    command: 'batch_delete_scene_history',
+    id: wanRequestId,
+    param: {
+      scene_records: sceneRecords,
+      residence_id: residenceId,
+    },
+  };
+};
+
+export const extractSceneHistoryRecords = (payload = {}) => {
+  const candidates = [
+    payload?.result?.records,
+    payload?.result?.history,
+    payload?.result?.list,
+    payload?.result?.data,
+    payload?.result,
+    payload?.records,
+    payload?.history,
+    payload?.list,
+    payload?.data,
+  ];
+
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) return candidate;
+    if (Array.isArray(candidate?.records)) return candidate.records;
+    if (Array.isArray(candidate?.history)) return candidate.history;
+    if (Array.isArray(candidate?.list)) return candidate.list;
+  }
+
+  return [];
+};
+
+export const getSceneHistoryRecordId = (record = {}) => {
+  const candidates = [record?.scene_record_id, record?.sceneRecordId, record?.record_id, record?.recordId, record?.id];
+  for (const value of candidates) {
+    if (value !== undefined && value !== null && normalizeText(value) !== '') {
+      return String(value);
+    }
+  }
+  return '';
+};
+
+export const formatSceneHistoryTimestamp = (value) => {
+  if (value === undefined || value === null || value === '') return '';
+  const numeric = Number(value);
+  if (!Number.isNaN(numeric) && numeric > 0) {
+    const ms = numeric > 1e12 ? numeric : numeric * 1000;
+    const date = new Date(ms);
+    if (!Number.isNaN(date.getTime())) return date.toLocaleString();
+  }
+  const date = new Date(value);
+  if (!Number.isNaN(date.getTime())) return date.toLocaleString();
+  return String(value);
+};
+
+export const resolveSceneHistoryDetails = (record = {}) => {
+  const asDisplayText = (value) => {
+    if (value === undefined || value === null) return '';
+    if (typeof value === 'string' || typeof value === 'number') return normalizeText(value);
+    return '';
+  };
+
+  const findFieldByKeyword = (keywords) => {
+    for (const [key, value] of Object.entries(record || {})) {
+      if (value === undefined || value === null || value === '') continue;
+      if (typeof value !== 'string' && typeof value !== 'number') continue;
+      const keyLower = key.toLowerCase();
+      if (keywords.some((keyword) => keyLower.includes(keyword))) return value;
+    }
+    return undefined;
+  };
+
+  const timestampValue = record?.create_time ?? record?.createTime ?? record?.execution_time
+    ?? record?.executionTime ?? record?.time ?? record?.timestamp ?? record?.trigger_time ?? record?.triggerTime
+    ?? record?.record_time ?? record?.recordTime ?? record?.add_time ?? record?.addTime ?? record?.occur_time
+    ?? record?.occurTime ?? record?.date ?? record?.datetime
+    ?? findFieldByKeyword(['time', 'date']);
+  const timestamp = formatSceneHistoryTimestamp(timestampValue);
+  const statusValue = record?.status ?? record?.result ?? record?.state ?? record?.success
+    ?? findFieldByKeyword(['status', 'state', 'result', 'success']);
+  const statusText = normalizeText(statusValue).toLowerCase();
+  const isSuccess = statusValue === true || statusValue === 1 || statusValue === '1'
+    || statusText === 'success' || statusText === 'ok' || statusText === 'true';
+  const isFailure = statusValue === false || statusValue === 0 || statusValue === '0'
+    || statusText === 'fail' || statusText === 'failed' || statusText === 'error';
+  const message = asDisplayText(record?.message) || asDisplayText(record?.msg) || asDisplayText(record?.detail) || asDisplayText(record?.description);
+  const triggerSource = asDisplayText(record?.trigger_source) || asDisplayText(record?.triggerSource)
+    || asDisplayText(record?.source) || asDisplayText(record?.trigger_type) || asDisplayText(record?.triggerType);
+  return { timestamp, isSuccess, isFailure, message, triggerSource };
+};
+
 const getPayloadArray = (payload) => {
   const candidates = [
     payload?.result,
