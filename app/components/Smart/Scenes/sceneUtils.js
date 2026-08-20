@@ -463,6 +463,26 @@ export const resolveSceneHistoryDetails = (record = {}) => {
   return { timestamp, isSuccess, isFailure, message, triggerSource };
 };
 
+export const PERMISSION_DENIED_MESSAGE = 'Permission denied. Only the property admin account can create, edit, or delete scenes and scene history on WAN. You can still view and run scenes as a standard member.';
+
+export const isPermissionDeniedResponse = (response, payload) => {
+  if (response?.status === 401 || response?.status === 403) return true;
+
+  const code = payload?.result?.code ?? payload?.code;
+  const codeText = normalizeText(code).toLowerCase();
+  if (['401', '403', 'forbidden', 'permission_denied', 'no_auth', 'noauth', 'unauthorized'].includes(codeText)) return true;
+
+  const combinedText = [
+    payload?.message, payload?.error, payload?.detail,
+    payload?.result?.message, payload?.result?.error, payload?.result?.detail,
+  ].map((value) => normalizeText(value).toLowerCase()).join(' ');
+
+  const permissionKeywords = ['permission', 'forbidden', 'not allow', 'not authorized', 'unauthorized', 'no auth', 'no_auth', 'admin only', 'access denied'];
+  return permissionKeywords.some((keyword) => combinedText.includes(keyword));
+};
+
+export const createPermissionDeniedError = () => Object.assign(new Error(PERMISSION_DENIED_MESSAGE), { isPermissionDenied: true });
+
 const getPayloadArray = (payload) => {
   const candidates = [
     payload?.result,

@@ -37,6 +37,8 @@ import {
   buildManualTriggerSceneRequest,
   resolveSceneHistoryDetails,
   resolveSceneUserDetails,
+  isPermissionDeniedResponse,
+  createPermissionDeniedError,
 } from './sceneUtils';
 
 const LAN_SCENE_URL = 'http://192.168.2.115/api/v1.0/scene';
@@ -268,18 +270,18 @@ export default function ScenesScreen({ route, navigation }) {
       return null;
     }
 
-    const isLan = selectedOption === 'LAN';
-    const token = isLan ? await getActiveLanToken() : await getActiveWanToken();
-    const requestBody = buildSceneInfoRequest({
-      isLan,
-      selectedMockup,
-      sceneId,
-      lanRequestId: LAN_REQUEST_ID,
-      wanRequestId: WAN_REQUEST_ID,
-      residenceIds: RESIDENCE_IDS,
-    });
-
     try {
+      const isLan = selectedOption === 'LAN';
+      const token = isLan ? await getActiveLanToken() : await getActiveWanToken();
+      const requestBody = buildSceneInfoRequest({
+        isLan,
+        selectedMockup,
+        sceneId,
+        lanRequestId: LAN_REQUEST_ID,
+        wanRequestId: WAN_REQUEST_ID,
+        residenceIds: RESIDENCE_IDS,
+      });
+
       setSelectedScene(scene);
       setSelectedSceneDetails(null);
       if (showInModal) setDetailModalVisible(true);
@@ -401,10 +403,8 @@ export default function ScenesScreen({ route, navigation }) {
 
   const createScene = useCallback(async () => {
     const isLan = selectedOption === 'LAN';
-    if (!createForm.name.trim() || !createForm.trigger || !createForm.action || (!isLan && !createForm.condition)) {
-      setCreateError(isLan
-        ? 'Enter a scene name and select a trigger and action.'
-        : 'Enter a scene name and select a trigger, condition, and action for a WAN scene.');
+    if (!createForm.name.trim() || !createForm.trigger || !createForm.action) {
+      setCreateError('Enter a scene name and select a trigger and action.');
       return;
     }
     const requiredSelections = [createForm.trigger, createForm.action, createForm.condition].filter(Boolean);
@@ -444,6 +444,7 @@ export default function ScenesScreen({ route, navigation }) {
           status: response.status,
           payload: JSON.stringify(payload),
         });
+        if (!isLan && isPermissionDeniedResponse(response, payload)) throw createPermissionDeniedError();
         throw new Error(getCreateSceneError(payload));
       }
       setShowCreate(false);
@@ -452,6 +453,7 @@ export default function ScenesScreen({ route, navigation }) {
       await loadScenes();
       Alert.alert('Scene created', 'The new scene is now available in your scene list.');
     } catch (error) {
+      if (error?.isPermissionDenied) Alert.alert('Permission denied', error.message);
       setCreateError(error?.message || 'Unable to create scene.');
     } finally {
       setCreateLoading(false);
@@ -460,10 +462,8 @@ export default function ScenesScreen({ route, navigation }) {
 
   const updateScene = useCallback(async () => {
     const isLan = selectedOption === 'LAN';
-    if (!editingSceneId || !createForm.name.trim() || !createForm.trigger || !createForm.action || (!isLan && !createForm.condition)) {
-      setCreateError(isLan
-        ? 'Enter a scene name and select a trigger and action.'
-        : 'Enter a scene name and select a trigger, condition, and action for a WAN scene.');
+    if (!editingSceneId || !createForm.name.trim() || !createForm.trigger || !createForm.action) {
+      setCreateError('Enter a scene name and select a trigger and action.');
       return;
     }
     const requiredSelections = [createForm.trigger, createForm.action, createForm.condition].filter(Boolean);
@@ -500,12 +500,14 @@ export default function ScenesScreen({ route, navigation }) {
       });
       const payload = await response.json();
       if (!response.ok || payload?.success === false || payload?.result?.success === false) {
+        if (!isLan && isPermissionDeniedResponse(response, payload)) throw createPermissionDeniedError();
         throw new Error(getCreateSceneError(payload, 'Unable to update scene.'));
       }
       resetSceneEditor();
       await loadScenes();
       Alert.alert('Scene updated', 'Your scene changes have been saved.');
     } catch (error) {
+      if (error?.isPermissionDenied) Alert.alert('Permission denied', error.message);
       setCreateError(error?.message || 'Unable to update scene.');
     } finally {
       setCreateLoading(false);
@@ -564,6 +566,7 @@ export default function ScenesScreen({ route, navigation }) {
               });
               const payload = await response.json();
               if (!response.ok || payload?.success === false || payload?.result?.success === false) {
+                if (!isLan && isPermissionDeniedResponse(response, payload)) throw createPermissionDeniedError();
                 throw new Error(payload?.message || payload?.error || payload?.detail || 'Unable to delete this scene.');
               }
               setDetailModalVisible(false);
@@ -573,7 +576,7 @@ export default function ScenesScreen({ route, navigation }) {
               Alert.alert('Scene deleted', `${getSceneName(scene, 0)} has been removed.`);
             } catch (error) {
               console.error('[ScenesScreen] Failed to delete scene:', error);
-              Alert.alert('Unable to delete scene', error?.message || 'Please try again.');
+              Alert.alert(error?.isPermissionDenied ? 'Permission denied' : 'Unable to delete scene', error?.message || 'Please try again.');
             } finally {
               setDeletingSceneId('');
             }
@@ -614,6 +617,7 @@ export default function ScenesScreen({ route, navigation }) {
               });
               const payload = await response.json();
               if (!response.ok || payload?.success === false || payload?.result?.success === false) {
+                if (!isLan && isPermissionDeniedResponse(response, payload)) throw createPermissionDeniedError();
                 throw new Error(payload?.message || payload?.error || payload?.detail || 'Unable to delete the selected scenes.');
               }
               const deletedCount = selectedSceneIds.length;
@@ -622,7 +626,7 @@ export default function ScenesScreen({ route, navigation }) {
               Alert.alert('Scenes deleted', `${deletedCount} scene${deletedCount > 1 ? 's' : ''} removed.`);
             } catch (error) {
               console.error('[ScenesScreen] Failed to batch delete scenes:', error);
-              Alert.alert('Unable to delete scenes', error?.message || 'Please try again.');
+              Alert.alert(error?.isPermissionDenied ? 'Permission denied' : 'Unable to delete scenes', error?.message || 'Please try again.');
             } finally {
               setBatchDeleting(false);
             }
@@ -746,12 +750,13 @@ export default function ScenesScreen({ route, navigation }) {
               const payload = await response.json();
               if (!response.ok || payload?.success === false || payload?.result?.success === false) {
                 console.warn('[ScenesScreen] delete_scene_history rejected:', { status: response.status, payload: JSON.stringify(payload) });
+                if (!isLan && isPermissionDeniedResponse(response, payload)) throw createPermissionDeniedError();
                 throw new Error(getCreateSceneError(payload, 'Unable to delete this history entry.'));
               }
               await fetchSceneHistory(selectedSceneDetails || selectedScene, historyPageIndex);
             } catch (error) {
               console.error('[ScenesScreen] Failed to delete scene history entry:', error);
-              Alert.alert('Unable to delete entry', error?.message || 'Please try again.');
+              Alert.alert(error?.isPermissionDenied ? 'Permission denied' : 'Unable to delete entry', error?.message || 'Please try again.');
             } finally {
               setHistoryDeletingId('');
             }
@@ -793,13 +798,14 @@ export default function ScenesScreen({ route, navigation }) {
               const payload = await response.json();
               if (!response.ok || payload?.success === false || payload?.result?.success === false) {
                 console.warn('[ScenesScreen] batch_delete_scene_history rejected:', { status: response.status, payload: JSON.stringify(payload) });
+                if (!isLan && isPermissionDeniedResponse(response, payload)) throw createPermissionDeniedError();
                 throw new Error(getCreateSceneError(payload, 'Unable to delete the selected entries.'));
               }
               exitHistorySelectionMode();
               await fetchSceneHistory(selectedSceneDetails || selectedScene, historyPageIndex);
             } catch (error) {
               console.error('[ScenesScreen] Failed to batch delete scene history:', error);
-              Alert.alert('Unable to delete entries', error?.message || 'Please try again.');
+              Alert.alert(error?.isPermissionDenied ? 'Permission denied' : 'Unable to delete entries', error?.message || 'Please try again.');
             } finally {
               setHistoryBatchDeleting(false);
             }
