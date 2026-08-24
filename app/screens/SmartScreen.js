@@ -18,6 +18,7 @@ import DeviceGrid from '../components/Smart/SmartScreenSections/DeviceGrid';
 import { BACKEND_URL, useAuth } from '../context/AuthContext';
 import CallbackRegistration from '../components/Services/CallbackRegister';
 import { NetworkInfo } from 'react-native-network-info';
+import routes from '../navigation/routes';
 
 const { Akuvox } = NativeModules;
 const LAN_CALLBACK_CONFIG_URL = 'http://192.168.2.115/api/v1.0/callback';
@@ -867,7 +868,7 @@ export default function SmartScreen({ navigation }) {
   return (
     <Screen>
       <Animated.View style={[styles.headerContainer, { transform: [{ translateY: headerTranslateY }] }]}>
-        <Header />
+        <Header onUserPress={() => navigation.navigate(routes.ACCOUNTDETAILS, { selectedOption })} />
         {/* lanHeaders prop removed from StatsSection if not used there; keep if required */}
         <StatsSection
           selectedOption={selectedOption}

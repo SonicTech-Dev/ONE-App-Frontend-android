@@ -1,11 +1,15 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
-const Header = ({ name }) => {
+const Header = ({ name, onUserPress }) => {
   const displayName = (name || '').trim() || 'there';
 
   return(
   <View style={styles.headerContainer}>
+    <TouchableOpacity style={styles.userButton} onPress={onUserPress} accessibilityLabel="Open my account">
+      <MaterialCommunityIcons name="account-circle-outline" size={30} color="#6f4bd8" />
+    </TouchableOpacity>
     <View style={styles.textBlock}>
     <Text style={styles.greeting}>
       Hey, <Text style={styles.boldText}>{displayName}</Text>
@@ -30,6 +34,14 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
     flex: 1,
     justifyContent: 'center',
+  },
+  userButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
   },
   greeting: {
     fontSize: 21,

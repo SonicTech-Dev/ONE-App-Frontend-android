@@ -9,6 +9,8 @@ SMARTSCREEN:'SmartScreen',
 SERVICESSCREEN:"ServicesScreen",
 REQUESTSCREEN:"RequestScreen",
 HEALTHSCREEN:'HealthScreen',
+ACCOUNTDETAILS:'AccountDetailsScreen',
+FAMILYMANAGEMENT:'FamilyManagementScreen',
 
 });
   
