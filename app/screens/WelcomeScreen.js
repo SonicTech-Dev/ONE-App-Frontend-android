@@ -1,13 +1,17 @@
 import React, { useState } from 'react';
 import { View, StyleSheet, Image, TouchableOpacity, Text, Alert, StatusBar } from 'react-native';
 import { Video } from 'react-native-video';
+import { Picker } from '@react-native-picker/picker';
 import AppButton from '../components/AppButton';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import MaterialFilledTextField from '../components/MaterialUI/MaterialFilledTextField';
 import UploadScreen from "./UploadScreen";
 import { useAuth, BACKEND_URL } from '../context/AuthContext';
 
-const DEFAULT_RESIDENCE_ID = "rabd2c6d2aecc4ce3be11e25b4ecd3c82";
+const RESIDENCE_IDS = {
+  mockup1: 'r45844047053e43d78fe5272c5badbd3a',
+  mockup2: 'rabd2c6d2aecc4ce3be11e25b4ecd3c82',
+};
 
 export default function WelcomeScreen({ navigation }) {
   const [isLoginMode, setIsLoginMode] = useState(true);
@@ -21,7 +25,7 @@ export default function WelcomeScreen({ navigation }) {
   const [password, setPassword] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
-  const [authRole, setAuthRole] = useState('guest');
+  const [selectedResidence, setSelectedResidence] = useState('mockup2');
   
   const [visible, setVisible] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -67,8 +71,8 @@ export default function WelcomeScreen({ navigation }) {
       password, 
       first_name: firstName, 
       last_name: lastName,
-      auth: authRole,
-      residence_id: DEFAULT_RESIDENCE_ID 
+      auth: 'user',
+      residence_id: RESIDENCE_IDS[selectedResidence]
     };
     
     try {
@@ -227,15 +231,17 @@ export default function WelcomeScreen({ navigation }) {
                   autoCorrect={false}
                   marginTop={10}
                 />
-                <MaterialFilledTextField
-                  label={"Auth Role (e.g. guest or admin)"}
-                  value={authRole}
-                  onChangeText={setAuthRole}
-                  backgroundColor={'#f5f5f5'}
-                  autoCorrect={false}
-                  autoCapitalize="none"
-                  marginTop={10}
-                />
+                <View style={styles.residencePickerContainer}>
+                  <Text style={styles.residencePickerLabel}>Residence</Text>
+                  <Picker
+                    selectedValue={selectedResidence}
+                    onValueChange={setSelectedResidence}
+                    style={styles.residencePicker}
+                  >
+                    <Picker.Item label="Mockup 1" value="mockup1" />
+                    <Picker.Item label="Mockup 2" value="mockup2" />
+                  </Picker>
+                </View>
               </>
             )}
 
@@ -276,7 +282,7 @@ export default function WelcomeScreen({ navigation }) {
               disabled={
                 !isValidEmail(email) || 
                 password.length < 6 || 
-                (!isLoginMode && (!firstName || !lastName || !authRole)) || 
+                (!isLoginMode && (!firstName || !lastName || !selectedResidence)) || 
                 loading
               }
               opacity={loading ? 0.5 : 1}
@@ -376,6 +382,21 @@ const styles = StyleSheet.create({
   },
   modeBannerLan: {
     backgroundColor: '#edf8ef',
+  },
+  residencePickerContainer: {
+    backgroundColor: '#f5f5f5',
+    borderRadius: 4,
+    marginTop: 10,
+    paddingLeft: 12,
+  },
+  residencePickerLabel: {
+    color: '#666',
+    fontSize: 12,
+    paddingTop: 8,
+  },
+  residencePicker: {
+    height: 44,
+    marginLeft: -4,
   },
   modeBannerLabel: {
     color: '#1c1c1c',

@@ -99,6 +99,12 @@ export default function AccountDetailsScreen({ route, navigation }) {
     loadAccountDetails();
   }, [loadAccountDetails]);
 
+  // Admin rights can be transferred from Family Management, so re-resolve the role on return.
+  useEffect(() => {
+    const unsubscribe = navigation?.addListener?.('focus', loadAccountDetails);
+    return unsubscribe;
+  }, [navigation, loadAccountDetails]);
+
   const fullName = `${accountInfo?.first_name || ''} ${accountInfo?.last_name || ''}`.trim() || accountInfo?.account_name || 'Account';
   const roleLabel = getAuthRoleLabel(authRole);
 

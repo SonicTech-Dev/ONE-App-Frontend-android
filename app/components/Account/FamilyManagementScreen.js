@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Modal,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -11,9 +12,11 @@ import {
   View,
 } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
+import { CommonActions } from '@react-navigation/native';
 import { useAuth } from '../../context/AuthContext';
 import Screen from '../Screen';
 import {
+  buildChangeFamilyAdminRequest,
   buildGetFamilyInfoRequest,
   buildUpdateFamilyInfoRequest,
   extractFamilyInfo,
@@ -24,6 +27,7 @@ import {
   getAuthRoleLabel,
   getUpstreamErrorMessage,
   normalizeNetworkMode,
+  resolveCurrentUserAuthRole,
 } from './accountUtils';
 
 const LAN_FAMILY_URL = 'http://192.168.2.115/api/v1.0/family';
@@ -33,7 +37,7 @@ const DEFAULT_WAN_RESIDENCE_ID = 'rabd2c6d2aecc4ce3be11e25b4ecd3c82';
 
 export default function FamilyManagementScreen({ route, navigation }) {
   const currentAccountId = route?.params?.currentAccountId || '';
-  const { networkMode, getActiveLanToken, getActiveWanToken } = useAuth();
+  const { networkMode, getActiveLanToken, getActiveWanToken, logout } = useAuth();
   const activeNetworkMode = normalizeNetworkMode(route?.params?.selectedOption, networkMode);
   const isLan = activeNetworkMode === 'LAN';
   const [familyInfo, setFamilyInfo] = useState(null);
@@ -42,6 +46,8 @@ export default function FamilyManagementScreen({ route, navigation }) {
   const [isEditingFamilyName, setIsEditingFamilyName] = useState(false);
   const [familyNameDraft, setFamilyNameDraft] = useState('');
   const [savingFamilyName, setSavingFamilyName] = useState(false);
+  const [transferringAdminId, setTransferringAdminId] = useState('');
+  const [isAdminPickerVisible, setIsAdminPickerVisible] = useState(false);
 
   const loadFamilyInfo = useCallback(async () => {
     setLoading(true);
@@ -81,6 +87,14 @@ export default function FamilyManagementScreen({ route, navigation }) {
 
   const members = getFamilyMembers(familyInfo);
   const familyName = familyInfo?.family_name || '';
+  const isCurrentUserAdmin = String(resolveCurrentUserAuthRole(familyInfo, currentAccountId)).toLowerCase() === 'admin';
+  const canTransferAdmin = !isLan && isCurrentUserAdmin;
+  const transferCandidates = members.filter((member) => {
+    const memberId = String(member?.account_id || '');
+    return !!memberId
+      && memberId !== String(currentAccountId)
+      && String(member?.auth || '').toLowerCase() !== 'admin';
+  });
 
   const startEditingFamilyName = () => {
     setFamilyNameDraft(familyName);
@@ -139,6 +153,104 @@ export default function FamilyManagementScreen({ route, navigation }) {
     } finally {
       setSavingFamilyName(false);
     }
+  };
+
+  const transferAdmin = async (member) => {
+    const targetAccountId = String(member?.account_id || '');
+    if (!targetAccountId) {
+      Alert.alert('Unable to transfer', 'This member has no account ID.');
+      return;
+    }
+
+    const residenceId = getFamilyId(familyInfo) || DEFAULT_WAN_RESIDENCE_ID;
+    setTransferringAdminId(targetAccountId);
+    try {
+      const token = await getActiveWanToken();
+      const response = await fetch(WAN_FAMILY_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(buildChangeFamilyAdminRequest({
+          residenceId,
+          accountId: targetAccountId,
+          requestId: FAMILY_REQUEST_ID,
+        })),
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(getUpstreamErrorMessage(payload, `Unable to transfer admin rights (${response.status})`));
+      }
+
+      setFamilyInfo((currentFamilyInfo) => {
+        if (!currentFamilyInfo) return currentFamilyInfo;
+        return {
+          ...currentFamilyInfo,
+          accounts: getFamilyMembers(currentFamilyInfo).map((entry) => {
+            const entryId = String(entry?.account_id || '');
+            if (entryId === targetAccountId) return { ...entry, auth: 'admin' };
+            if (entryId === String(currentAccountId)) return { ...entry, auth: 'user' };
+            return entry;
+          }),
+        };
+      });
+      Alert.alert(
+        'Admin rights transferred',
+        `${getMemberDisplayName(member)} is now the family admin. Your account has been changed to a standard member.`,
+      );
+      loadFamilyInfo();
+    } catch (error) {
+      console.error('[FamilyManagementScreen] Failed to change family admin:', error);
+      Alert.alert('Unable to transfer', error?.message || 'Unable to transfer admin rights right now.');
+    } finally {
+      setTransferringAdminId('');
+    }
+  };
+
+  const confirmTransferAdmin = (member) => {
+    Alert.alert(
+      'Transfer admin rights?',
+      `Are you sure you want to make ${getMemberDisplayName(member)} the family admin?\n\nThis action transfers all administrator privileges to them, and your account will be downgraded to a standard member. Only the new admin will be able to transfer these rights back.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Transfer',
+          style: 'destructive',
+          onPress: () => {
+            setIsAdminPickerVisible(false);
+            transferAdmin(member);
+          },
+        },
+      ],
+    );
+  };
+
+  const openAdminPicker = () => {
+    if (transferCandidates.length === 0) {
+      Alert.alert('No eligible members', 'There is no other family member available to receive admin rights.');
+      return;
+    }
+    setIsAdminPickerVisible(true);
+  };
+
+  const handleLogout = () => {
+    Alert.alert(
+      'Log out?',
+      "You'll need to sign in again to continue using the app.",
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Log out',
+          style: 'destructive',
+          onPress: async () => {
+            await logout();
+            navigation.dispatch(CommonActions.reset({ index: 0, routes: [{ name: 'WelcomeScreen' }] }));
+          },
+        },
+      ],
+    );
   };
 
   return (
@@ -210,6 +322,24 @@ export default function FamilyManagementScreen({ route, navigation }) {
           </View>
         ) : null}
 
+        {canTransferAdmin ? (
+          <TouchableOpacity
+            style={styles.transferButton}
+            onPress={openAdminPicker}
+            disabled={!!transferringAdminId}
+            accessibilityLabel="Transfer admin privilege"
+          >
+            {transferringAdminId ? (
+              <ActivityIndicator size="small" color="#ffffff" />
+            ) : (
+              <>
+                <MaterialCommunityIcons name="shield-account-outline" size={18} color="#ffffff" />
+                <Text style={styles.transferButtonText}>Transfer admin privilege</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        ) : null}
+
         {loading && !familyInfo ? (
           <View style={styles.stateCard}>
             <ActivityIndicator size="small" color="#6f4bd8" />
@@ -238,28 +368,72 @@ export default function FamilyManagementScreen({ route, navigation }) {
           <View style={styles.list}>
             {members.map((member, index) => {
               const name = getMemberDisplayName(member);
-              const isCurrentUser = currentAccountId && String(member?.account_id) === String(currentAccountId);
+              const memberId = String(member?.account_id || '');
+              const isCurrentUser = currentAccountId && memberId === String(currentAccountId);
               return (
                 <View key={member?.account_id || `${name}-${index}`} style={styles.memberRow}>
                   <View style={styles.memberAvatar}>
                     <Text style={styles.memberAvatarText}>{getInitials(name)}</Text>
                   </View>
                   <View style={styles.memberBody}>
-                    <View style={styles.memberNameRow}>
-                      <Text style={styles.memberName} numberOfLines={1}>{name}</Text>
-                      {isCurrentUser ? <Text style={styles.youTag}>You</Text> : null}
-                    </View>
+                    <Text style={styles.memberName} numberOfLines={1}>{name}</Text>
                     {member?.email ? <Text style={styles.memberEmail} numberOfLines={1}>{member.email}</Text> : null}
                   </View>
-                  <View style={[styles.roleBadge, styles[`roleBadge_${String(member?.auth || '').toLowerCase()}`] || styles.roleBadgeDefault]}>
-                    <Text style={styles.roleBadgeText}>{getAuthRoleLabel(member?.auth)}</Text>
+                  <View style={styles.memberActions}>
+                    <View style={[styles.roleBadge, styles[`roleBadge_${String(member?.auth || '').toLowerCase()}`] || styles.roleBadgeDefault]}>
+                      <Text style={styles.roleBadgeText}>{getAuthRoleLabel(member?.auth)}</Text>
+                    </View>
+                    {isCurrentUser ? <Text style={styles.youTag}>You</Text> : null}
                   </View>
                 </View>
               );
             })}
           </View>
         )}
+
+        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout} accessibilityLabel="Log out">
+          <MaterialCommunityIcons name="logout" size={18} color="#c35b6f" />
+          <Text style={styles.logoutButtonText}>Log out</Text>
+        </TouchableOpacity>
       </ScrollView>
+
+      <Modal
+        visible={isAdminPickerVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setIsAdminPickerVisible(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Transfer admin privilege</Text>
+            <Text style={styles.modalSubtitle}>Select the member who should become the new family admin.</Text>
+            <ScrollView style={styles.modalList}>
+              {transferCandidates.map((member, index) => {
+                const name = getMemberDisplayName(member);
+                return (
+                  <TouchableOpacity
+                    key={member?.account_id || `${name}-${index}`}
+                    style={styles.modalMemberRow}
+                    onPress={() => confirmTransferAdmin(member)}
+                  >
+                    <View style={styles.memberAvatar}>
+                      <Text style={styles.memberAvatarText}>{getInitials(name)}</Text>
+                    </View>
+                    <View style={styles.memberBody}>
+                      <Text style={styles.memberName} numberOfLines={1}>{name}</Text>
+                      {member?.email ? <Text style={styles.memberEmail} numberOfLines={1}>{member.email}</Text> : null}
+                    </View>
+                    <MaterialCommunityIcons name="chevron-right" size={22} color="#8975b5" />
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+            <TouchableOpacity style={styles.modalCancelButton} onPress={() => setIsAdminPickerVisible(false)}>
+              <Text style={styles.modalCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </Screen>
   );
 }
@@ -297,11 +471,23 @@ const styles = StyleSheet.create({
   memberAvatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#efe6ff', alignItems: 'center', justifyContent: 'center', marginRight: 12 },
   memberAvatarText: { color: '#6f4bd8', fontSize: 14, fontWeight: '800' },
   memberBody: { flex: 1, marginRight: 8 },
-  memberNameRow: { flexDirection: 'row', alignItems: 'center' },
-  memberName: { color: '#34225f', fontSize: 14, fontWeight: '800', textTransform: 'capitalize' },
-  youTag: { color: '#6f4bd8', fontSize: 10, fontWeight: '800', marginLeft: 8, backgroundColor: '#efe6ff', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999 },
+  memberActions: { alignItems: 'flex-end', flexShrink: 0 },
+  memberName: { color: '#34225f', fontSize: 14, fontWeight: '800', textTransform: 'capitalize', flexShrink: 1 },
+  youTag: { color: '#6f4bd8', fontSize: 10, fontWeight: '800', marginTop: 6, backgroundColor: '#efe6ff', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999, overflow: 'hidden' },
   memberEmail: { color: '#8975a8', fontSize: 12, fontWeight: '600', marginTop: 2 },
-  roleBadge: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: '#8975a8' },
+  transferButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#6f4bd8', borderRadius: 14, minHeight: 48, paddingHorizontal: 16, marginBottom: 16 },
+  transferButtonText: { color: '#ffffff', fontSize: 14, fontWeight: '800', marginLeft: 8 },
+  logoutButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#ffffff', borderRadius: 14, borderWidth: 1, borderColor: '#f0d3d9', minHeight: 48, paddingHorizontal: 16, marginTop: 24 },
+  logoutButtonText: { color: '#c35b6f', fontSize: 14, fontWeight: '800', marginLeft: 8 },
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(30, 18, 56, 0.45)', justifyContent: 'center', padding: 22 },
+  modalCard: { backgroundColor: '#ffffff', borderRadius: 20, padding: 20, maxHeight: '75%' },
+  modalTitle: { color: '#34225f', fontSize: 18, fontWeight: '800' },
+  modalSubtitle: { color: '#8975a8', fontSize: 13, lineHeight: 19, marginTop: 6, marginBottom: 12 },
+  modalList: { flexGrow: 0 },
+  modalMemberRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#faf8ff', borderRadius: 14, padding: 12, marginBottom: 10 },
+  modalCancelButton: { alignItems: 'center', justifyContent: 'center', minHeight: 46, borderRadius: 14, backgroundColor: '#f2ebff', marginTop: 6 },
+  modalCancelText: { color: '#6f4bd8', fontSize: 14, fontWeight: '800' },
+  roleBadge: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: '#8975a8', flexShrink: 0 },
   roleBadgeDefault: { backgroundColor: '#8975a8' },
   roleBadge_admin: { backgroundColor: '#6f4bd8' },
   roleBadge_user: { backgroundColor: '#4caf7d' },

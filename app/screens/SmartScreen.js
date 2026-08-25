@@ -361,6 +361,10 @@ export default function SmartScreen({ navigation }) {
               setLastRegisteredMockup(selectedMockup);
               const status = await Akuvox.getSipStatus();
               setSipRegistrationStatus(status);
+              if (status === 2) {
+                await AsyncStorage.setItem('registeredTransport', 'lan');
+                await AsyncStorage.setItem('registeredMockup', selectedMockup);
+              }
               console.log('[SmartScreen] SIP line status after LAN registration:', status);
             } catch (lanError) {
               // LAN failure is non-fatal — user may not be on home Wi-Fi
@@ -403,6 +407,10 @@ export default function SmartScreen({ navigation }) {
               setLastRegisteredMockup(selectedMockup);
               const status = await Akuvox.getSipStatus();
               setSipRegistrationStatus(status);
+              if (status === 2) {
+                await AsyncStorage.setItem('registeredTransport', 'wan');
+                await AsyncStorage.setItem('registeredMockup', selectedMockup);
+              }
               console.log('[SmartScreen] SIP line status after WAN registration:', status);
             } catch (wanError) {
               console.warn('[SmartScreen] WAN SIP registration skipped:', wanError?.message || wanError);

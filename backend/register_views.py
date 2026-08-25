@@ -146,7 +146,7 @@ def register_user(request):
         first_name = (data.get('first_name') or '').strip()
         last_name = (data.get('last_name') or '').strip()
         residence_id = (data.get('residence_id') or '').strip()
-        auth = (data.get('auth') or 'guest').strip()
+        auth = 'user'
 
         if not email or not password:
             return _error_response("Email and password are required.", 400)

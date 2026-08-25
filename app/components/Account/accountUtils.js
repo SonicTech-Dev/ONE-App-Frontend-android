@@ -26,6 +26,16 @@ export const buildUpdateFamilyInfoRequest = ({ isLan, familyId, familyName, requ
   },
 });
 
+// WAN only: transfers admin rights to another family account, demoting the caller.
+export const buildChangeFamilyAdminRequest = ({ residenceId, accountId, requestId }) => ({
+  command: 'change_family_admin',
+  id: requestId,
+  param: {
+    residence_id: residenceId,
+    account_id: accountId,
+  },
+});
+
 const asObject = (value) => (value && typeof value === 'object' && !Array.isArray(value) ? value : {});
 
 export const extractAccountInfo = (payload = {}) => asObject(payload?.result);
