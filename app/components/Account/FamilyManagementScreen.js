@@ -14,6 +14,7 @@ import {
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { CommonActions } from '@react-navigation/native';
 import { useAuth } from '../../context/AuthContext';
+import { MOCKUP_OPTIONS } from '../Smart/SmartScreenSections/SmartScreen.constants';
 import Screen from '../Screen';
 import {
   buildChangeFamilyAdminRequest,
@@ -33,13 +34,20 @@ import {
 const LAN_FAMILY_URL = 'http://192.168.2.115/api/v1.0/family';
 const WAN_FAMILY_URL = 'https://one-development.soniciot.com/get-family-details/';
 const FAMILY_REQUEST_ID = 'c45e846ca23ab42c9ae469d988ae32a96';
-const DEFAULT_WAN_RESIDENCE_ID = 'rabd2c6d2aecc4ce3be11e25b4ecd3c82';
+const RESIDENCE_IDS = {
+  [MOCKUP_OPTIONS.MOCKUP_1]: 'r45844047053e43d78fe5272c5badbd3a',
+  [MOCKUP_OPTIONS.MOCKUP_2]: 'rabd2c6d2aecc4ce3be11e25b4ecd3c82',
+};
 
 export default function FamilyManagementScreen({ route, navigation }) {
   const currentAccountId = route?.params?.currentAccountId || '';
   const { networkMode, getActiveLanToken, getActiveWanToken, logout } = useAuth();
   const activeNetworkMode = normalizeNetworkMode(route?.params?.selectedOption, networkMode);
   const isLan = activeNetworkMode === 'LAN';
+  const selectedMockup = route?.params?.selectedMockup === MOCKUP_OPTIONS.MOCKUP_1
+    ? MOCKUP_OPTIONS.MOCKUP_1
+    : MOCKUP_OPTIONS.MOCKUP_2;
+  const familyResidenceId = RESIDENCE_IDS[selectedMockup];
   const [familyInfo, setFamilyInfo] = useState(null);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
@@ -63,7 +71,7 @@ export default function FamilyManagementScreen({ route, navigation }) {
         },
         body: JSON.stringify(buildGetFamilyInfoRequest({
           isLan,
-          residenceId: DEFAULT_WAN_RESIDENCE_ID,
+          residenceId: familyResidenceId,
           requestId: FAMILY_REQUEST_ID,
         })),
       });
@@ -79,7 +87,7 @@ export default function FamilyManagementScreen({ route, navigation }) {
     } finally {
       setLoading(false);
     }
-  }, [getActiveLanToken, getActiveWanToken, isLan]);
+  }, [familyResidenceId, getActiveLanToken, getActiveWanToken, isLan]);
 
   useEffect(() => {
     loadFamilyInfo();
@@ -113,7 +121,7 @@ export default function FamilyManagementScreen({ route, navigation }) {
       return;
     }
 
-    const familyId = getFamilyId(familyInfo) || (!isLan ? DEFAULT_WAN_RESIDENCE_ID : '');
+    const familyId = getFamilyId(familyInfo) || (!isLan ? familyResidenceId : '');
     if (!familyId) {
       Alert.alert('Unable to update', 'Family ID is missing from the family info response.');
       return;
@@ -162,7 +170,7 @@ export default function FamilyManagementScreen({ route, navigation }) {
       return;
     }
 
-    const residenceId = getFamilyId(familyInfo) || DEFAULT_WAN_RESIDENCE_ID;
+    const residenceId = getFamilyId(familyInfo) || familyResidenceId;
     setTransferringAdminId(targetAccountId);
     try {
       const token = await getActiveWanToken();

@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useAuth } from '../../context/AuthContext';
+import { MOCKUP_OPTIONS } from '../Smart/SmartScreenSections/SmartScreen.constants';
 import Screen from '../Screen';
 import routes from '../../navigation/routes';
 import {
@@ -29,13 +30,19 @@ const WAN_ACCOUNT_URL = 'https://one-development.soniciot.com/get-account-detail
 const LAN_FAMILY_URL = 'http://192.168.2.115/api/v1.0/family';
 const WAN_FAMILY_URL = 'https://one-development.soniciot.com/get-family-details/';
 const ACCOUNT_REQUEST_ID = 'c45e846ca23ab42c9ae469d988ae32a96';
-// No mockup selector exists outside of Smart/Scenes yet; default to Mockup 2's residence for WAN family lookups.
-const DEFAULT_WAN_RESIDENCE_ID = 'rabd2c6d2aecc4ce3be11e25b4ecd3c82';
+const RESIDENCE_IDS = {
+  [MOCKUP_OPTIONS.MOCKUP_1]: 'r45844047053e43d78fe5272c5badbd3a',
+  [MOCKUP_OPTIONS.MOCKUP_2]: 'rabd2c6d2aecc4ce3be11e25b4ecd3c82',
+};
 
 export default function AccountDetailsScreen({ route, navigation }) {
-  const { networkMode, getActiveLanToken, getActiveWanToken } = useAuth();
+  const { networkMode, residenceId, authRole: authenticatedRole, getActiveLanToken, getActiveWanToken } = useAuth();
   const activeNetworkMode = normalizeNetworkMode(route?.params?.selectedOption, networkMode);
   const isLan = activeNetworkMode === 'LAN';
+  const selectedMockup = route?.params?.selectedMockup === MOCKUP_OPTIONS.MOCKUP_1
+    ? MOCKUP_OPTIONS.MOCKUP_1
+    : MOCKUP_OPTIONS.MOCKUP_2;
+  const selectedResidenceId = RESIDENCE_IDS[selectedMockup];
   const [accountInfo, setAccountInfo] = useState(null);
   const [authRole, setAuthRole] = useState('');
   const [loading, setLoading] = useState(true);
@@ -63,6 +70,7 @@ export default function AccountDetailsScreen({ route, navigation }) {
       }
       const info = extractAccountInfo(payload);
       setAccountInfo(info);
+      setAuthRole(info?.auth || authenticatedRole || '');
 
       // Auth role is only exposed via family info, and only WAN returns the member list today.
       try {
@@ -71,7 +79,7 @@ export default function AccountDetailsScreen({ route, navigation }) {
           headers: getRequestHeaders(token),
           body: JSON.stringify(buildGetFamilyInfoRequest({
             isLan,
-            residenceId: DEFAULT_WAN_RESIDENCE_ID,
+            residenceId: selectedResidenceId,
             requestId: ACCOUNT_REQUEST_ID,
           })),
         });
@@ -80,11 +88,11 @@ export default function AccountDetailsScreen({ route, navigation }) {
           const familyInfo = extractFamilyInfo(familyPayload);
           setAuthRole(resolveCurrentUserAuthRole(familyInfo, info?.account_id));
         } else {
-          setAuthRole('');
+          setAuthRole(info?.auth || authenticatedRole || '');
         }
       } catch (familyError) {
         console.error('[AccountDetailsScreen] Failed to resolve auth role from family info:', familyError);
-        setAuthRole('');
+        setAuthRole(info?.auth || authenticatedRole || '');
       }
     } catch (error) {
       console.error('[AccountDetailsScreen] Failed to load account details:', error);
@@ -93,7 +101,7 @@ export default function AccountDetailsScreen({ route, navigation }) {
     } finally {
       setLoading(false);
     }
-  }, [getActiveLanToken, getActiveWanToken, getRequestHeaders, isLan]);
+  }, [authenticatedRole, getActiveLanToken, getActiveWanToken, getRequestHeaders, isLan, selectedResidenceId]);
 
   useEffect(() => {
     loadAccountDetails();
@@ -174,6 +182,7 @@ export default function AccountDetailsScreen({ route, navigation }) {
               onPress={() => navigation.navigate(routes.FAMILYMANAGEMENT, {
                 currentAccountId: accountInfo?.account_id,
                 selectedOption: activeNetworkMode,
+                selectedMockup,
               })}
               accessibilityLabel="View family management"
             >

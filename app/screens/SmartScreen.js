@@ -876,7 +876,7 @@ export default function SmartScreen({ navigation }) {
   return (
     <Screen>
       <Animated.View style={[styles.headerContainer, { transform: [{ translateY: headerTranslateY }] }]}>
-        <Header onUserPress={() => navigation.navigate(routes.ACCOUNTDETAILS, { selectedOption })} />
+        <Header onUserPress={() => navigation.navigate(routes.ACCOUNTDETAILS, { selectedOption, selectedMockup })} />
         {/* lanHeaders prop removed from StatsSection if not used there; keep if required */}
         <StatsSection
           selectedOption={selectedOption}

@@ -30,6 +30,8 @@ export function AuthProvider({ children }) {
   const [lanToken, setLanToken] = useState(null);
   const [wanToken, setWanToken] = useState(null);
   const [userCredentials, setUserCredentials] = useState(null);
+  const [residenceId, setResidenceId] = useState(null);
+  const [authRole, setAuthRole] = useState(null);
   const [networkMode, setNetworkMode] = useState('WAN');
   const [isInitializing, setIsInitializing] = useState(true);
 
@@ -40,6 +42,8 @@ export function AuthProvider({ children }) {
         // Manage the currently active session explicitly
         const activeEmail = await AsyncStorage.getItem('activeEmail');
         const activePassword = await AsyncStorage.getItem('activePassword');
+        const activeResidenceId = await AsyncStorage.getItem('activeResidenceId');
+        const activeAuthRole = await AsyncStorage.getItem('activeAuthRole');
 
         // Do not restore old access tokens across launches.
         // They can be expired and cause immediate 401/unauthorized errors on startup.
@@ -51,6 +55,8 @@ export function AuthProvider({ children }) {
         if (activeEmail && activePassword) {
           setUserCredentials({ email: activeEmail, password: activePassword });
         }
+        setResidenceId(activeResidenceId);
+        setAuthRole(activeAuthRole);
       } catch (e) {
         console.error("Failed to load auth state", e);
       } finally {
@@ -126,12 +132,24 @@ export function AuthProvider({ children }) {
     return data.result.access_token;
   };
 
-  const persistSession = async (email, password, mode) => {
+  const persistSession = async (email, password, mode, activeResidenceId = null, activeAuthRole = null) => {
     setUserCredentials({ email, password });
     setNetworkMode(mode);
+    setResidenceId(activeResidenceId);
+    setAuthRole(activeAuthRole);
     await AsyncStorage.setItem('activeEmail', email);
     await AsyncStorage.setItem('activePassword', password);
     await AsyncStorage.setItem('networkMode', mode);
+    if (activeResidenceId) {
+      await AsyncStorage.setItem('activeResidenceId', activeResidenceId);
+    } else {
+      await AsyncStorage.removeItem('activeResidenceId');
+    }
+    if (activeAuthRole) {
+      await AsyncStorage.setItem('activeAuthRole', activeAuthRole);
+    } else {
+      await AsyncStorage.removeItem('activeAuthRole');
+    }
   };
 
   const cacheOfflineUser = async (email, password) => {
@@ -182,12 +200,13 @@ export function AuthProvider({ children }) {
       throw createAuthError("Unable to sign in right now. Please try again.", 'BACKEND_LOGIN_FAILED');
     }
 
+    const loginData = await response.json().catch(() => ({}));
     const wToken = await fetchWanToken(email, password);
     setWanToken(wToken);
     setLanToken(null);
     await AsyncStorage.setItem('wanToken', wToken);
     await AsyncStorage.removeItem('lanToken');
-    await persistSession(email, password, 'WAN');
+    await persistSession(email, password, 'WAN', loginData?.residence_id || null, loginData?.auth || null);
     await cacheOfflineUser(email, password);
 
     return { success: true, mode: 'WAN' };
@@ -211,15 +230,17 @@ export function AuthProvider({ children }) {
     setLanToken(null);
     setWanToken(null);
     setUserCredentials(null);
+    setResidenceId(null);
+    setAuthRole(null);
     setNetworkMode('WAN');
     // Important: We purposefully DO NOT wipe 'savedOfflineUsers' here so that multiple users can log back offline! 
-    await AsyncStorage.multiRemove(['lanToken', 'wanToken', 'networkMode', 'activeEmail', 'activePassword']);
+    await AsyncStorage.multiRemove(['lanToken', 'wanToken', 'networkMode', 'activeEmail', 'activePassword', 'activeResidenceId', 'activeAuthRole']);
   };
 
   return (
     <AuthContext.Provider value={{ 
       lanToken, wanToken, getActiveLanToken, getActiveWanToken,
-      networkMode, isInitializing, loginLan, loginWan, logout, generateGeneralWanToken, verifyOnlineAccount
+      networkMode, residenceId, authRole, isInitializing, loginLan, loginWan, logout, generateGeneralWanToken, verifyOnlineAccount
     }}>
       {children}
     </AuthContext.Provider>
