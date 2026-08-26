@@ -8,14 +8,14 @@ import { controlDevice, deviceStatus as fetchDeviceStatus } from '../SmartScreen
 // without relying on auto-discovery.
 const MANUAL_F2_LOCK_CONFIG = {
   LAN: {
-    device_id: 'df3434dc6455f76c62d5f5b047ca2653',
-    ability_id: 'lock.2d11f2a68c6846c010e476adcf661165',
+    device_id: 'b7ab1bc7a91ca0c7467aff8785d8ff6b',
+    ability_id: 'lock.da51a81b4eef38be28040a9c3df9818d',
     commandPair: { on: 'turn_off', off: 'turn_on' },
   },
   WAN: {
-    device_id: 'da1932e4497b34eb6b59cb3a0c5343b3a',
-    ability_id: 'e30063259a5e24fda82ceea43f978f7c1',
-    commandPair: { on: 'turn_off', off: 'turn_on' },
+    device_id: 'd1f1c948bb3ac4910b5f26e828c6fb702',
+    ability_id: 'eb331cef8bfc741b0a263b15b4e37559c',
+    commandPair: { on: 'lock', off: 'unlock' },
   },
 };
 
@@ -33,44 +33,112 @@ function parseLockViewState(deviceStatus, device) {
   let productName = '';
 
   const result = deviceStatus?.result || deviceStatus;
-  const abilities = result?.abilities || [];
 
-  const lockAbility = abilities.find((a) =>
-    a?.ability_type && String(a.ability_type).toLowerCase() === 'lock'
-  );
-  if (lockAbility && lockAbility.state !== undefined) {
-    const raw = String(lockAbility.state).toLowerCase();
-    // F2 reports lock state inverted vs C6/other locks for on/off values.
-    if (raw === 'on') lockState = 'unlocked';
-    else if (raw === 'off') lockState = 'locked';
-    else if (raw === 'locked' || raw === 'unlocked') lockState = raw;
-    else lockState = String(lockAbility.state);
+  let abilities = [];
+  if (Array.isArray(result?.abilities)) {
+    abilities = result.abilities;
+  } else if (Array.isArray(deviceStatus?.abilities)) {
+    abilities = deviceStatus.abilities;
+  } else if (Array.isArray(result)) {
+    for (const item of result) {
+      if (Array.isArray(item?.abilities) && item.abilities.length > 0) {
+        abilities = item.abilities;
+        break;
+      }
+    }
+  } else if (Array.isArray(result?.devices)) {
+    for (const item of result.devices) {
+      if (Array.isArray(item?.abilities) && item.abilities.length > 0) {
+        abilities = item.abilities;
+        break;
+      }
+    }
+  } else if (Array.isArray(result?.sub_devices)) {
+    for (const item of result.sub_devices) {
+      if (Array.isArray(item?.abilities) && item.abilities.length > 0) {
+        abilities = item.abilities;
+        break;
+      }
+    }
   }
 
-  const batteryAbility = abilities.find(
-    (a) => a?.ability_name && String(a.ability_name).toLowerCase() === 'battery'
-  );
+  const lockAbility = abilities.find((a) => {
+    if (!a) return false;
+    const type = String(a.ability_type || a.domain || '').toLowerCase();
+    const name = String(a.ability_name || a.name || '').toLowerCase();
+    const id = String(a.ability_id || a.id || '').toLowerCase();
+
+    return (
+      type === 'lock' ||
+      type.includes('lock') ||
+      name === 'lock' ||
+      name.includes('lock') ||
+      id.includes('lock') ||
+      id === 'eb331cef8bfc741b0a263b15b4e37559c' ||
+      id === 'lock.da51a81b4eef38be28040a9c3df9818d'
+    );
+  });
+
+  if (lockAbility && lockAbility.state !== undefined) {
+    const raw = String(lockAbility.state).toLowerCase();
+    if (raw === 'on' || raw === 'unlocked' || raw === 'open' || raw === '1' || raw === 'true') {
+      lockState = 'unlocked';
+    } else if (raw === 'off' || raw === 'locked' || raw === 'close' || raw === 'closed' || raw === '0' || raw === 'false') {
+      lockState = 'locked';
+    } else {
+      lockState = raw;
+    }
+  }
+
+  const batteryAbility = abilities.find((a) => {
+    if (!a) return false;
+    const type = String(a.ability_type || a.domain || '').toLowerCase();
+    const name = String(a.ability_name || a.name || '').toLowerCase();
+    const id = String(a.ability_id || a.id || '').toLowerCase();
+    return type.includes('battery') || name.includes('battery') || id.includes('battery');
+  });
+
   if (batteryAbility && batteryAbility.state !== undefined) {
     battery = batteryAbility.state;
   }
 
   const tamperAbility = abilities.find((a) => {
-    const abilityName = String(a?.ability_name || '').toLowerCase();
-    const abilityType = String(a?.ability_type || '').toLowerCase();
-    const attributeType = String(a?.attribute?.type || '').toLowerCase();
-    const abilityId = String(a?.ability_id || '').toLowerCase();
+    if (!a) return false;
+    const type = String(a.ability_type || a.domain || '').toLowerCase();
+    const name = String(a.ability_name || a.name || '').toLowerCase();
+    const id = String(a.ability_id || a.id || '').toLowerCase();
+    const attrType = String(a.attribute?.type || '').toLowerCase();
 
-    if (abilityName === 'tamper') return true;
-    if (abilityName === 'tamper alarm' && attributeType === 'tamper') return true;
-    if (abilityType === 'tamper') return true;
-    if (abilityId.includes('tamper')) return true;
-    return false;
+    return (
+      type.includes('tamper') ||
+      name.includes('tamper') ||
+      id.includes('tamper') ||
+      attrType.includes('tamper') ||
+      name.includes('alarm')
+    );
   });
+
   if (tamperAbility && tamperAbility.state !== undefined) {
-    tamperState = tamperAbility.state;
+    const raw = String(tamperAbility.state).toLowerCase();
+    if (['on', 'tampered', 'alarm', 'true', '1'].includes(raw)) {
+      tamperState = 'on';
+    } else if (['off', 'ok', 'normal', 'false', '0', 'clear'].includes(raw)) {
+      tamperState = 'off';
+    } else {
+      tamperState = raw;
+    }
   }
 
-  online = result?.online;
+  if (typeof result?.online === 'boolean') {
+    online = result.online;
+  } else if (typeof deviceStatus?.online === 'boolean') {
+    online = deviceStatus.online;
+  } else if (typeof result?._parentOnline === 'boolean') {
+    online = result._parentOnline;
+  } else if (abilities.length > 0) {
+    online = true;
+  }
+
   deviceType = result?.device_type || device?.device_type || '';
   productName =
     result?.product_name ||
@@ -110,6 +178,7 @@ export default function F2LockModal({
   const [screenError, setScreenError] = useState('');
 
   const selectedOptionFromRoute = normalizeMode(route?.params?.selectedOption || networkMode);
+  const selectedMockup = route?.params?.selectedMockup || 'mockup1';
   const lockTitle = route?.params?.lockTitle || 'F2 SmartLock';
 
   const getManualConfig = useCallback(() => {
@@ -120,7 +189,9 @@ export default function F2LockModal({
       return {
         device_id: routeDeviceId,
         ability_id: routeAbilityId,
-        commandPair: { on: 'turn_off', off: 'turn_on' },
+        commandPair: selectedOptionFromRoute === 'WAN'
+          ? { on: 'lock', off: 'unlock' }
+          : { on: 'turn_off', off: 'turn_on' },
       };
     }
 
@@ -145,9 +216,14 @@ export default function F2LockModal({
   const loadDirectStatusByDeviceId = useCallback(
     async (deviceId) => {
       const headers = await getHeaders();
-      await fetchDeviceStatus(deviceId, selectedOptionFromRoute, setScreenStatus, headers);
+      const manualConfig = getManualConfig();
+      await fetchDeviceStatus(deviceId, selectedOptionFromRoute, setScreenStatus, headers, {
+        deviceTitle: lockTitle,
+        abilityId: manualConfig?.ability_id,
+        selectedMockup,
+      });
     },
-    [getHeaders, selectedOptionFromRoute]
+    [getHeaders, getManualConfig, lockTitle, selectedOptionFromRoute, selectedMockup]
   );
 
   const loadManualF2Status = useCallback(async () => {
@@ -167,7 +243,9 @@ export default function F2LockModal({
         setScreenDevice({
           device_id: manualConfig.device_id,
           ability_id: manualConfig.ability_id,
-          commandPair: manualConfig.commandPair || { on: 'turn_on', off: 'turn_off' },
+          commandPair: manualConfig.commandPair || (selectedOptionFromRoute === 'WAN'
+            ? { on: 'lock', off: 'unlock' }
+            : { on: 'turn_off', off: 'turn_on' }),
         });
         await loadDirectStatusByDeviceId(manualConfig.device_id);
       } else {
@@ -192,11 +270,11 @@ export default function F2LockModal({
     try {
       const headers = await getHeaders();
       const primaryCommand = targetAction === 'lock'
-        ? screenDevice.commandPair.on
-        : screenDevice.commandPair.off;
+        ? (screenDevice.commandPair?.on || (selectedOptionFromRoute === 'WAN' ? 'lock' : 'turn_off'))
+        : (screenDevice.commandPair?.off || (selectedOptionFromRoute === 'WAN' ? 'unlock' : 'turn_on'));
       const fallbackCommands = targetAction === 'lock'
-        ? ['lock', 'turn_on', 'on', 'close']
-        : ['unlock', 'turn_off', 'off', 'open'];
+        ? ['lock', 'turn_off', 'off', 'close', '0']
+        : ['unlock', 'turn_on', 'on', 'open', '1'];
 
       const commandCandidates = [
         primaryCommand,
@@ -204,6 +282,7 @@ export default function F2LockModal({
       ].filter((v, index, arr) => !!v && arr.indexOf(v) === index);
 
       let controlSucceeded = false;
+      let lastErrorMessage = '';
 
       for (const command of commandCandidates) {
         const response = await controlDevice(
@@ -213,19 +292,29 @@ export default function F2LockModal({
           null,
           selectedOptionFromRoute,
           headers,
-          { suppressErrorAlert: true }
+          { suppressErrorAlert: true, selectedMockup }
         );
 
-        if (response?.ok) {
+        const data = response?.data;
+        const hasHttpOk = Boolean(response?.ok);
+        const hasCodeError = data && typeof data.code === 'number' && data.code !== 0 && data.code !== 200;
+        const hasResultError = data && (data.result === 'fail' || data.result === 'error' || data.status === 'fail');
+
+        if (hasHttpOk && !hasCodeError && !hasResultError) {
           controlSucceeded = true;
           break;
+        } else {
+          lastErrorMessage = data?.msg || data?.message || response?.error?.message || '';
         }
       }
 
       if (!controlSucceeded) {
-        throw new Error(`Failed to ${targetAction} the F2 lock. Please verify ability ID and command mapping.`);
+        throw new Error(
+          lastErrorMessage || `Failed to ${targetAction} the F2 lock. Please verify ability ID and command mapping.`
+        );
       }
 
+      await new Promise((resolve) => setTimeout(resolve, 500));
       await loadDirectStatusByDeviceId(screenDevice.device_id);
       setScreenError('');
     } catch (err) {
@@ -235,7 +324,7 @@ export default function F2LockModal({
     } finally {
       setScreenLockLoading(false);
     }
-  }, [getHeaders, loadDirectStatusByDeviceId, screenDevice, selectedOptionFromRoute]);
+  }, [getHeaders, loadDirectStatusByDeviceId, screenDevice, selectedOptionFromRoute, selectedMockup]);
 
   useEffect(() => {
     if (isScreenMode) {

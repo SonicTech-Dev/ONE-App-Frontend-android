@@ -44,6 +44,7 @@ export default function SmartLockScreen({ route, navigation }) {
   const goToF2 = () => {
     navigateWithinSmartStack('F2Lock', {
       selectedOption,
+      selectedMockup,
       lockTitle: 'F2 SmartLock',
     });
   };

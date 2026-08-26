@@ -135,7 +135,8 @@ export const deviceStatus = async (
   } = options;
   const isHyPanel = String(deviceTitle || '').toLowerCase().includes('hypanel');
   const isDoorWindowSensor = String(deviceTitle || '').toLowerCase().includes('door/window sensor');
-  const shouldUseListFirst = !strictDeviceId && (isHyPanel || isDoorWindowSensor);
+  const isLockDevice = String(deviceTitle || '').toLowerCase().includes('lock') || String(deviceTitle || '').toLowerCase().includes('f2');
+  const shouldUseListFirst = !strictDeviceId && (isHyPanel || isDoorWindowSensor || isLockDevice);
   const activeResidenceId = resolveResidenceId(selectedMockup);
 
   const setOfflineStatus = () => {
