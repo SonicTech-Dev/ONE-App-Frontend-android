@@ -41,76 +41,6 @@ const StatsSection = ({
 
   return (
     <>
-      <View style={[styles.actionDockContainer, { marginTop: 8 }]}>
-        {/* Contacts */}
-        <TouchableOpacity 
-          style={styles.actionButtonWrapper} 
-          onPress={() => navigation.navigate('SdkTest', { selectedMockup, selectedOption, selectedResidenceId })}
-          activeOpacity={0.7}
-        >
-          <View style={[styles.actionButtonIcon, { backgroundColor: '#f2ebff' }]}>
-            <MaterialIcons name="contact-page" size={24} color="#6f4bd8" />
-          </View>
-          <Text style={styles.actionButtonLabel}>Contacts</Text>
-        </TouchableOpacity>
-
-        {/* Smart Lock */}
-        <TouchableOpacity 
-          style={styles.actionButtonWrapper} 
-          onPress={() => navigation.navigate('SmartLockScreen', { selectedOption, selectedMockup, selectedResidenceId })}
-          activeOpacity={0.7}
-        >
-          <View style={[styles.actionButtonIcon, { backgroundColor: '#efe6ff' }]}>
-            <MaterialIcons name="door-sliding" size={24} color="#6f4bd8" />
-          </View>
-          <Text style={styles.actionButtonLabel}>Locks</Text>
-        </TouchableOpacity>
-
-        {/* Intercom */}
-        <TouchableOpacity 
-          style={styles.actionButtonWrapper} 
-          onPress={() => navigation.navigate('IntercomScreen', {
-            selectedOption,
-            selectedMockup,
-            selectedResidenceId,
-            deviceId: intercomConfig.deviceId,
-            lanRtspUrl: intercomConfig.lanRtspUrl,
-            wanRtspUrl: intercomConfig.wanRtspUrl,
-            LAN_HEADERS: lanHeaders
-          })}
-          activeOpacity={0.7}
-        >
-          <View style={[styles.actionButtonIcon, { backgroundColor: '#efe6ff' }]}>
-            <MaterialIcons name="sensor-door" size={24} color="#6f4bd8" />
-          </View>
-          <Text style={styles.actionButtonLabel}>Intercom</Text>
-        </TouchableOpacity>
-
-        {/* IP Camera */}
-        <TouchableOpacity 
-          style={styles.actionButtonWrapper} 
-          onPress={() => navigation.navigate('IPCameraScreen', { selectedOption })}
-          activeOpacity={0.7}
-        >
-          <View style={[styles.actionButtonIcon, { backgroundColor: '#f2ebff' }]}>
-            <MaterialCommunityIcons name="cctv" size={24} color="#6f4bd8" />
-          </View>
-          <Text style={styles.actionButtonLabel}>Cameras</Text>
-        </TouchableOpacity>
-
-        {/* Scenes */}
-        <TouchableOpacity
-          style={styles.actionButtonWrapper}
-          onPress={() => navigation.navigate('ScenesScreen', { selectedOption, selectedMockup, selectedResidenceId })}
-          activeOpacity={0.7}
-        >
-          <View style={[styles.actionButtonIcon, { backgroundColor: '#efe6ff' }]}>
-            <MaterialCommunityIcons name="play-box-multiple-outline" size={24} color="#6f4bd8" />
-          </View>
-          <Text style={styles.actionButtonLabel}>Scenes</Text>
-        </TouchableOpacity>
-      </View>
-
       <RadioRow>
         <RadioContainer>
           <RadioOption onPress={() => setSelectedOption('LAN')}>
@@ -142,6 +72,76 @@ const StatsSection = ({
           )}
         </FamilyDropdownButton>
       </MockupRow>
+
+      <View style={[styles.actionDockContainer, { marginTop: 12 }]}> 
+        {/* Contacts */}
+        <TouchableOpacity 
+          style={styles.actionButtonWrapper} 
+          onPress={() => navigation.navigate('SdkTest', { selectedMockup, selectedOption, selectedResidenceId })}
+          activeOpacity={0.7}
+        >
+          <View style={[styles.actionButtonIcon, { backgroundColor: '#f2ebff' }]}> 
+            <MaterialIcons name="contact-page" size={24} color="#6f4bd8" />
+          </View>
+          <Text style={styles.actionButtonLabel}>Contacts</Text>
+        </TouchableOpacity>
+
+        {/* Smart Lock */}
+        <TouchableOpacity 
+          style={styles.actionButtonWrapper} 
+          onPress={() => navigation.navigate('SmartLockScreen', { selectedOption, selectedMockup, selectedResidenceId })}
+          activeOpacity={0.7}
+        >
+          <View style={[styles.actionButtonIcon, { backgroundColor: '#efe6ff' }]}> 
+            <MaterialIcons name="door-sliding" size={24} color="#6f4bd8" />
+          </View>
+          <Text style={styles.actionButtonLabel}>Locks</Text>
+        </TouchableOpacity>
+
+        {/* Intercom */}
+        <TouchableOpacity 
+          style={styles.actionButtonWrapper} 
+          onPress={() => navigation.navigate('IntercomScreen', {
+            selectedOption,
+            selectedMockup,
+            selectedResidenceId,
+            deviceId: intercomConfig.deviceId,
+            lanRtspUrl: intercomConfig.lanRtspUrl,
+            wanRtspUrl: intercomConfig.wanRtspUrl,
+            LAN_HEADERS: lanHeaders
+          })}
+          activeOpacity={0.7}
+        >
+          <View style={[styles.actionButtonIcon, { backgroundColor: '#efe6ff' }]}> 
+            <MaterialIcons name="sensor-door" size={24} color="#6f4bd8" />
+          </View>
+          <Text style={styles.actionButtonLabel}>Intercom</Text>
+        </TouchableOpacity>
+
+        {/* IP Camera */}
+        <TouchableOpacity 
+          style={styles.actionButtonWrapper} 
+          onPress={() => navigation.navigate('IPCameraScreen', { selectedOption })}
+          activeOpacity={0.7}
+        >
+          <View style={[styles.actionButtonIcon, { backgroundColor: '#f2ebff' }]}> 
+            <MaterialCommunityIcons name="cctv" size={24} color="#6f4bd8" />
+          </View>
+          <Text style={styles.actionButtonLabel}>Cameras</Text>
+        </TouchableOpacity>
+
+        {/* Scenes */}
+        <TouchableOpacity
+          style={styles.actionButtonWrapper}
+          onPress={() => navigation.navigate('ScenesScreen', { selectedOption, selectedMockup, selectedResidenceId })}
+          activeOpacity={0.7}
+        >
+          <View style={[styles.actionButtonIcon, { backgroundColor: '#efe6ff' }]}> 
+            <MaterialCommunityIcons name="play-box-multiple-outline" size={24} color="#6f4bd8" />
+          </View>
+          <Text style={styles.actionButtonLabel}>Scenes</Text>
+        </TouchableOpacity>
+      </View>
 
       <Modal
         visible={familyDropdownVisible}
