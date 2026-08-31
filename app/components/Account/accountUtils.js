@@ -62,6 +62,24 @@ export const buildChangeFamilyAdminRequest = ({ residenceId, accountId, requestI
   },
 });
 
+export const buildDeleteFamilyAccountRequest = ({ residenceId, accountId, requestId }) => ({
+  command: 'delete_family_account',
+  id: requestId,
+  param: {
+    account_id: normalizeText(accountId),
+    residence_id: normalizeText(residenceId),
+  },
+});
+
+export const buildBatchDeleteFamilyAccountRequest = ({ residenceId, accountIds, requestId }) => ({
+  command: 'batch_delete_family_account',
+  id: requestId,
+  param: {
+    residence_id: normalizeText(residenceId),
+    accounts: accountIds.map((accountId) => ({ account_id: normalizeText(accountId) })),
+  },
+});
+
 const asObject = (value) => (value && typeof value === 'object' && !Array.isArray(value) ? value : {});
 
 export const extractAccountInfo = (payload = {}) => asObject(payload?.result);

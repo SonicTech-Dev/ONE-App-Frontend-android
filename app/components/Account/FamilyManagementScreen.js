@@ -16,7 +16,9 @@ import { useAuth } from '../../context/AuthContext';
 import { MOCKUP_OPTIONS } from '../Smart/SmartScreenSections/SmartScreen.constants';
 import Screen from '../Screen';
 import {
+  buildBatchDeleteFamilyAccountRequest,
   buildChangeFamilyAdminRequest,
+  buildDeleteFamilyAccountRequest,
   buildGetFamilyInfoRequest,
   buildUpdateFamilyInfoRequest,
   extractFamilyInfo,
@@ -55,6 +57,10 @@ export default function FamilyManagementScreen({ route, navigation }) {
   const [savingFamilyName, setSavingFamilyName] = useState(false);
   const [transferringAdminId, setTransferringAdminId] = useState('');
   const [isAdminPickerVisible, setIsAdminPickerVisible] = useState(false);
+  const [deletingMemberId, setDeletingMemberId] = useState('');
+  const [batchDeletingMembers, setBatchDeletingMembers] = useState(false);
+  const [isSelectingMembers, setIsSelectingMembers] = useState(false);
+  const [selectedMemberIds, setSelectedMemberIds] = useState([]);
 
   const loadFamilyInfo = useCallback(async () => {
     setLoading(true);
@@ -96,6 +102,11 @@ export default function FamilyManagementScreen({ route, navigation }) {
   const familyName = familyInfo?.family_name || '';
   const isCurrentUserAdmin = String(resolveCurrentUserAuthRole(familyInfo, currentAccountId)).toLowerCase() === 'admin';
   const canTransferAdmin = !isLan && isCurrentUserAdmin;
+  const canRemoveMembers = !isLan && isCurrentUserAdmin;
+  const removableMembers = members.filter((member) => {
+    const memberId = String(member?.account_id || '');
+    return !!memberId && memberId !== String(currentAccountId);
+  });
   const transferCandidates = members.filter((member) => {
     const memberId = String(member?.account_id || '');
     return !!memberId
@@ -242,6 +253,140 @@ export default function FamilyManagementScreen({ route, navigation }) {
     setIsAdminPickerVisible(true);
   };
 
+  const removeSelectedMemberIds = (idsToRemove) => {
+    setFamilyInfo((currentFamilyInfo) => {
+      if (!currentFamilyInfo) return currentFamilyInfo;
+      const removeSet = new Set(idsToRemove.map((id) => String(id)));
+      return {
+        ...currentFamilyInfo,
+        accounts: getFamilyMembers(currentFamilyInfo).filter((entry) => !removeSet.has(String(entry?.account_id || ''))),
+      };
+    });
+  };
+
+  const deleteFamilyMember = async (member) => {
+    const targetAccountId = String(member?.account_id || '');
+    if (!targetAccountId || targetAccountId === String(currentAccountId)) {
+      Alert.alert('Unable to remove', 'This member cannot be removed.');
+      return;
+    }
+
+    const residenceId = getFamilyId(familyInfo) || familyResidenceId;
+    setDeletingMemberId(targetAccountId);
+    try {
+      const token = await getActiveWanToken();
+      const response = await fetch(WAN_FAMILY_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(buildDeleteFamilyAccountRequest({
+          residenceId,
+          accountId: targetAccountId,
+          requestId: FAMILY_REQUEST_ID,
+        })),
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(getUpstreamErrorMessage(payload, `Unable to remove member (${response.status})`));
+      }
+
+      removeSelectedMemberIds([targetAccountId]);
+      setSelectedMemberIds((currentIds) => currentIds.filter((id) => id !== targetAccountId));
+      Alert.alert('Member removed', `${getMemberDisplayName(member)} has been removed from the family.`);
+      loadFamilyInfo();
+    } catch (error) {
+      console.error('[FamilyManagementScreen] Failed to remove family member:', error);
+      Alert.alert('Unable to remove', error?.message || 'Unable to remove this member right now.');
+    } finally {
+      setDeletingMemberId('');
+    }
+  };
+
+  const confirmDeleteFamilyMember = (member) => {
+    Alert.alert(
+      'Remove member?',
+      `Remove ${getMemberDisplayName(member)} from this family?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Remove', style: 'destructive', onPress: () => deleteFamilyMember(member) },
+      ],
+    );
+  };
+
+  const toggleMemberSelection = (memberId) => {
+    const normalizedId = String(memberId || '');
+    if (!normalizedId || normalizedId === String(currentAccountId)) return;
+    setSelectedMemberIds((currentIds) => (
+      currentIds.includes(normalizedId)
+        ? currentIds.filter((id) => id !== normalizedId)
+        : [...currentIds, normalizedId]
+    ));
+  };
+
+  const toggleSelectionMode = () => {
+    setIsSelectingMembers((isSelecting) => {
+      if (isSelecting) {
+        setSelectedMemberIds([]);
+      }
+      return !isSelecting;
+    });
+  };
+
+  const batchDeleteFamilyMembers = async () => {
+    if (selectedMemberIds.length === 0) {
+      Alert.alert('No members selected', 'Select at least one member to remove.');
+      return;
+    }
+
+    const residenceId = getFamilyId(familyInfo) || familyResidenceId;
+    setBatchDeletingMembers(true);
+    try {
+      const token = await getActiveWanToken();
+      const response = await fetch(WAN_FAMILY_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(buildBatchDeleteFamilyAccountRequest({
+          residenceId,
+          accountIds: selectedMemberIds,
+          requestId: FAMILY_REQUEST_ID,
+        })),
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(getUpstreamErrorMessage(payload, `Unable to remove selected members (${response.status})`));
+      }
+
+      removeSelectedMemberIds(selectedMemberIds);
+      setSelectedMemberIds([]);
+      setIsSelectingMembers(false);
+      Alert.alert('Members removed', 'Selected members have been removed from the family.');
+      loadFamilyInfo();
+    } catch (error) {
+      console.error('[FamilyManagementScreen] Failed to batch remove family members:', error);
+      Alert.alert('Unable to remove', error?.message || 'Unable to remove selected members right now.');
+    } finally {
+      setBatchDeletingMembers(false);
+    }
+  };
+
+  const confirmBatchDeleteFamilyMembers = () => {
+    Alert.alert(
+      'Remove selected members?',
+      `Remove ${selectedMemberIds.length} selected member${selectedMemberIds.length === 1 ? '' : 's'} from this family?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Remove', style: 'destructive', onPress: batchDeleteFamilyMembers },
+      ],
+    );
+  };
+
   return (
     <Screen style={styles.screen}>
       <ScrollView
@@ -329,6 +474,25 @@ export default function FamilyManagementScreen({ route, navigation }) {
           </TouchableOpacity>
         ) : null}
 
+        {canRemoveMembers && removableMembers.length > 0 ? (
+          <View style={styles.memberToolbar}>
+            <TouchableOpacity style={styles.selectMembersButton} onPress={toggleSelectionMode} accessibilityLabel={isSelectingMembers ? 'Cancel member selection' : 'Select members'}>
+              <MaterialCommunityIcons name={isSelectingMembers ? 'close' : 'checkbox-multiple-marked-outline'} size={18} color="#6f4bd8" />
+              <Text style={styles.selectMembersText}>{isSelectingMembers ? 'Cancel selection' : 'Select members'}</Text>
+            </TouchableOpacity>
+            {isSelectingMembers ? (
+              <TouchableOpacity
+                style={[styles.removeSelectedButton, selectedMemberIds.length === 0 ? styles.removeSelectedButtonDisabled : null]}
+                onPress={confirmBatchDeleteFamilyMembers}
+                disabled={selectedMemberIds.length === 0 || batchDeletingMembers}
+                accessibilityLabel="Remove selected members"
+              >
+                {batchDeletingMembers ? <ActivityIndicator size="small" color="#ffffff" /> : <Text style={styles.removeSelectedText}>Remove {selectedMemberIds.length}</Text>}
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        ) : null}
+
         {loading && !familyInfo ? (
           <View style={styles.stateCard}>
             <ActivityIndicator size="small" color="#6f4bd8" />
@@ -359,8 +523,32 @@ export default function FamilyManagementScreen({ route, navigation }) {
               const name = getMemberDisplayName(member);
               const memberId = String(member?.account_id || '');
               const isCurrentUser = currentAccountId && memberId === String(currentAccountId);
+              const canRemoveThisMember = canRemoveMembers && !isCurrentUser && !!memberId;
+              const isSelectedForRemoval = selectedMemberIds.includes(memberId);
               return (
-                <View key={member?.account_id || `${name}-${index}`} style={styles.memberRow}>
+                <TouchableOpacity
+                  key={member?.account_id || `${name}-${index}`}
+                  style={[styles.memberRow, isSelectedForRemoval ? styles.memberRowSelected : null]}
+                  activeOpacity={isSelectingMembers && canRemoveThisMember ? 0.75 : 1}
+                  onPress={() => {
+                    if (isSelectingMembers && canRemoveThisMember) toggleMemberSelection(memberId);
+                  }}
+                  onLongPress={() => {
+                    if (canRemoveThisMember && !isSelectingMembers) {
+                      setIsSelectingMembers(true);
+                      setSelectedMemberIds([memberId]);
+                    }
+                  }}
+                  disabled={!isSelectingMembers && !canRemoveThisMember}
+                >
+                  {isSelectingMembers && canRemoveThisMember ? (
+                    <MaterialCommunityIcons
+                      name={isSelectedForRemoval ? 'checkbox-marked-circle' : 'checkbox-blank-circle-outline'}
+                      size={24}
+                      color={isSelectedForRemoval ? '#c35b6f' : '#b8accf'}
+                      style={styles.memberSelectIcon}
+                    />
+                  ) : null}
                   <View style={styles.memberAvatar}>
                     <Text style={styles.memberAvatarText}>{getInitials(name)}</Text>
                   </View>
@@ -374,7 +562,17 @@ export default function FamilyManagementScreen({ route, navigation }) {
                     </View>
                     {isCurrentUser ? <Text style={styles.youTag}>You</Text> : null}
                   </View>
-                </View>
+                  {canRemoveThisMember && !isSelectingMembers ? (
+                    <TouchableOpacity
+                      style={styles.removeMemberButton}
+                      onPress={() => confirmDeleteFamilyMember(member)}
+                      disabled={deletingMemberId === memberId}
+                      accessibilityLabel={`Remove ${name}`}
+                    >
+                      {deletingMemberId === memberId ? <ActivityIndicator size="small" color="#c35b6f" /> : <MaterialCommunityIcons name="trash-can-outline" size={20} color="#c35b6f" />}
+                    </TouchableOpacity>
+                  ) : null}
+                </TouchableOpacity>
               );
             })}
           </View>
@@ -453,6 +651,8 @@ const styles = StyleSheet.create({
   retryText: { color: '#ffffff', fontSize: 13, fontWeight: '800' },
   list: {},
   memberRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#ffffff', borderRadius: 14, padding: 12, marginBottom: 10, shadowColor: '#34225f', shadowOpacity: 0.06, shadowRadius: 6, elevation: 2 },
+  memberRowSelected: { borderWidth: 1, borderColor: '#e9bdc7', backgroundColor: '#fff8fa' },
+  memberSelectIcon: { marginRight: 10 },
   memberAvatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#efe6ff', alignItems: 'center', justifyContent: 'center', marginRight: 12 },
   memberAvatarText: { color: '#6f4bd8', fontSize: 14, fontWeight: '800' },
   memberBody: { flex: 1, marginRight: 8 },
@@ -462,6 +662,13 @@ const styles = StyleSheet.create({
   memberEmail: { color: '#8975a8', fontSize: 12, fontWeight: '600', marginTop: 2 },
   transferButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#6f4bd8', borderRadius: 14, minHeight: 48, paddingHorizontal: 16, marginBottom: 16 },
   transferButtonText: { color: '#ffffff', fontSize: 14, fontWeight: '800', marginLeft: 8 },
+  memberToolbar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
+  selectMembersButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#ffffff', borderRadius: 13, borderWidth: 1, borderColor: '#e6dcf7', minHeight: 42, paddingHorizontal: 12 },
+  selectMembersText: { color: '#6f4bd8', fontSize: 13, fontWeight: '800', marginLeft: 7 },
+  removeSelectedButton: { minHeight: 42, borderRadius: 13, backgroundColor: '#c35b6f', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 14, marginLeft: 10 },
+  removeSelectedButtonDisabled: { opacity: 0.45 },
+  removeSelectedText: { color: '#ffffff', fontSize: 13, fontWeight: '800' },
+  removeMemberButton: { width: 38, height: 38, borderRadius: 19, backgroundColor: '#ffe9ed', alignItems: 'center', justifyContent: 'center', marginLeft: 8 },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(30, 18, 56, 0.45)', justifyContent: 'center', padding: 22 },
   modalCard: { backgroundColor: '#ffffff', borderRadius: 20, padding: 20, maxHeight: '75%' },
   modalTitle: { color: '#34225f', fontSize: 18, fontWeight: '800' },

@@ -488,11 +488,6 @@ export default function AccountDetailsScreen({ route, navigation }) {
 
             <View style={styles.infoCard}>
               <View style={styles.infoRow}>
-                <MaterialCommunityIcons name="identifier" size={18} color="#6f4bd8" />
-                <Text style={styles.infoLabel}>Account ID</Text>
-                <Text style={styles.infoValue} numberOfLines={1}>{accountInfo?.account_id || '—'}</Text>
-              </View>
-              <View style={styles.infoRow}>
                 <MaterialCommunityIcons name="account-key-outline" size={18} color="#6f4bd8" />
                 <Text style={styles.infoLabel}>Access role</Text>
                 <View style={[styles.roleBadge, authRole ? styles.roleBadgeActive : styles.roleBadgeUnknown]}>
