@@ -2,7 +2,7 @@ import React from 'react';
 import { ScrollView, View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import useColors from '../../hooks/useColors';
 
-const Tabs = ({ tabs, activeTab, onTabChange }) => {
+const Tabs = ({ tabs, activeTab, onTabChange, disabled = false }) => {
   const colors = useColors();
 
   return(
@@ -21,13 +21,18 @@ const Tabs = ({ tabs, activeTab, onTabChange }) => {
         style={[
           styles.tab,
           activeTab === tab && styles.activeTab(colors), // Highlight the active tab
+          disabled && styles.disabledTab,
         ]}
-        onPress={() => onTabChange(tab)}
+        onPress={() => {
+          if (!disabled) onTabChange(tab);
+        }}
+        disabled={disabled}
       >
         <Text
           style={[
             styles.tabText,
             activeTab === tab && styles.activeTabText, // Change text color for active tab
+            disabled && styles.disabledTabText,
           ]}
         >
           {tab}
@@ -72,5 +77,11 @@ const styles = StyleSheet.create({
   activeTabText: {
     color: '#ffffff',
     fontWeight: '800',
+  },
+  disabledTab: {
+    opacity: 0.45,
+  },
+  disabledTabText: {
+    color: '#9f94b8',
   },
 });

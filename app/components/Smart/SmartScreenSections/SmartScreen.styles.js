@@ -58,6 +58,9 @@ export default StyleSheet.create({
     alignItems: 'center',
     width: 56,
   },
+  disabledActionButtonWrapper: {
+    opacity: 0.42,
+  },
   actionButtonIcon: {
     width: 46,
     height: 46,
@@ -74,5 +77,8 @@ export default StyleSheet.create({
     fontWeight: '800',
     textAlign: 'center',
     letterSpacing: 0.3,
+  },
+  disabledDeviceTile: {
+    opacity: 0.45,
   }
 });

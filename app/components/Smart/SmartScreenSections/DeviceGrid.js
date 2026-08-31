@@ -13,6 +13,7 @@ export default function DeviceGrid({
   lanHeaders,
   setModalVisible,
   activeTab, // Use activeTab to determine which tab is selected
+  disabled = false,
 }) {
   return (
     <ScrollView contentContainerStyle={styles.scrollContainer} scrollEventThrottle={16}>
@@ -38,12 +39,14 @@ export default function DeviceGrid({
                   iconName={device.iconName}
                   library={device.library}
                   onToggle={(newControl) => handleToggle(device, newControl)}
-                  disabled={!device.lan?.commandPair}
+                  disabled={disabled || !device?.[String(selectedOption || '').toLowerCase()]?.commandPair}
                   selectedOption={selectedOption}
                   onPress={() => {
+                    if (disabled) return;
                     setSelectedDevice(device);
                     setModalVisible(true);
                   }}
+                  style={disabled ? styles.disabledDeviceTile : null}
                 />
               );
             })}

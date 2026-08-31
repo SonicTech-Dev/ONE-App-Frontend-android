@@ -202,6 +202,7 @@ export default function SmartScreen({ navigation }) {
   const [selectedResidenceId, setSelectedResidenceId] = useState(MOCKUP_RESIDENCE_IDS[MOCKUP_OPTIONS.MOCKUP_2]);
   const [familyOptions, setFamilyOptions] = useState(buildFallbackFamilyOptions);
   const [familyListLoading, setFamilyListLoading] = useState(false);
+  const [selectedFamilyOnline, setSelectedFamilyOnline] = useState(null);
   const activeResidenceId = selectedResidenceId || resolveResidenceId(selectedMockup);
   const [deviceCategories, setDeviceCategories] = useState(() => getDeviceCategoriesByResidenceId(MOCKUP_RESIDENCE_IDS[MOCKUP_OPTIONS.MOCKUP_2]));
   const [activeTab, setActiveTab] = useState('All Devices');
@@ -301,6 +302,10 @@ export default function SmartScreen({ navigation }) {
           const preferredFamily = nextFamilyOptions.find((family) => family.residence_id === MOCKUP_RESIDENCE_IDS[MOCKUP_OPTIONS.MOCKUP_2]) || nextFamilyOptions[0];
           setSelectedResidenceId(preferredFamily.residence_id);
           setSelectedMockup(resolveMockupByResidenceId(preferredFamily.residence_id));
+          setSelectedFamilyOnline(typeof preferredFamily.online === 'boolean' ? preferredFamily.online : null);
+        } else {
+          const currentFamily = nextFamilyOptions.find((family) => family.residence_id === selectedResidenceIdRef.current);
+          setSelectedFamilyOnline(typeof currentFamily?.online === 'boolean' ? currentFamily.online : null);
         }
       } catch (error) {
         console.warn('[SmartScreen] Failed to load WAN family list:', error?.message || error);
@@ -782,6 +787,7 @@ export default function SmartScreen({ navigation }) {
   const filteredDevices = categories.find((c) => c.category === activeTab)?.items || [];
 
   const handleTabChange = (tab) => setActiveTab(tab);
+  const smartSectionsDisabled = selectedFamilyOnline === false;
 
   const refreshModalDeviceStatus = async (
     device,
@@ -840,9 +846,14 @@ export default function SmartScreen({ navigation }) {
     if (!family?.residence_id) return;
     setSelectedResidenceId(family.residence_id);
     setSelectedMockup(resolveMockupByResidenceId(family.residence_id));
+    setSelectedFamilyOnline(typeof family.online === 'boolean' ? family.online : null);
   }, []);
 
   const handleToggle = async (device, newControl) => {
+    if (smartSectionsDisabled) {
+      Alert.alert('Family offline', 'This family is offline. Controls will be available when it comes back online.');
+      return;
+    }
     const mode = selectedOption.toLowerCase();
     const dev = device[mode];
     if (!dev || !dev.commandPair) {
@@ -992,10 +1003,12 @@ export default function SmartScreen({ navigation }) {
           familyOptions={familyOptions}
           familyListLoading={familyListLoading}
           onSelectFamily={handleFamilySelect}
+          onOnlineStatusChange={setSelectedFamilyOnline}
+          actionsDisabled={smartSectionsDisabled}
         />
       </Animated.View>
       <Animated.View style={[styles.tabsContainer, { transform: [{ translateY: tabsTranslateY }] }]}>
-        <Tabs tabs={categories.map((c) => c.category)} onTabChange={handleTabChange} activeTab={activeTab} />
+        <Tabs tabs={categories.map((c) => c.category)} onTabChange={handleTabChange} activeTab={activeTab} disabled={smartSectionsDisabled} />
       </Animated.View>
 
       {/* LAN Server for API */}
@@ -1022,6 +1035,7 @@ export default function SmartScreen({ navigation }) {
         setModalVisible={setModalVisible}
         selectedOption={selectedOption}
         activeTab={activeTab}
+        disabled={smartSectionsDisabled}
       />
       <DevicModal
         selectedDevice={selectedDevice}

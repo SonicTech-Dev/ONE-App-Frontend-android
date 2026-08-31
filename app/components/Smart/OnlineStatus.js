@@ -27,6 +27,7 @@ export default function OnlineStatus({
   requestId = 'c45e846ca23ab42c9ae469d988ae32a96',
   deviceId,
   residenceId,
+  onStatusChange,
 }) {
   const { getActiveLanToken, getActiveWanToken } = useAuth();
   const [isOnline, setIsOnline] = useState(null);
@@ -48,6 +49,12 @@ export default function OnlineStatus({
   useEffect(() => {
     let mounted = true;
     const controller = new AbortController();
+
+    const updateOnlineStatus = (nextStatus) => {
+      if (!mounted) return;
+      setIsOnline(nextStatus);
+      if (onStatusChange) onStatusChange(nextStatus);
+    };
 
     async function fetchStatus() {
       setLoading(true);
@@ -105,7 +112,7 @@ export default function OnlineStatus({
 
         if (!headers.Authorization) {
           console.warn('[OnlineStatus] No Authorization derived from buildLanHeaders; marking offline.');
-          if (mounted) setIsOnline(false);
+          updateOnlineStatus(false);
           return;
         }
 
@@ -138,13 +145,13 @@ export default function OnlineStatus({
             body: bodyText,
             usedAuthorization: headers.Authorization || null,
           });
-          if (mounted) setIsOnline(false);
+          updateOnlineStatus(false);
           return;
         }
 
         const json = await res.json();
         const onlineFlag = json && json.result && typeof json.result.online === 'boolean' ? json.result.online : null;
-        if (mounted) setIsOnline(onlineFlag === null ? false : onlineFlag);
+        updateOnlineStatus(onlineFlag === null ? false : onlineFlag);
       } catch (err) {
         if (err.name === 'AbortError') {
           console.log('[OnlineStatus] fetch aborted');
@@ -153,7 +160,7 @@ export default function OnlineStatus({
         } else {
           console.warn('[OnlineStatus] LAN/WAN fetch error', err);
         }
-        if (mounted) setIsOnline(false);
+        updateOnlineStatus(false);
       } finally {
         if (mounted) setLoading(false);
       }
@@ -176,6 +183,7 @@ export default function OnlineStatus({
     requestId,
     activeDeviceId,
     activeResidenceId,
+    onStatusChange,
   ]);
 
   if (loading && isOnline === null) {

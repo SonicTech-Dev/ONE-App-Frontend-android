@@ -18,6 +18,8 @@ const StatsSection = ({
   familyOptions = [],
   familyListLoading = false,
   onSelectFamily,
+  onOnlineStatusChange,
+  actionsDisabled = false,
   lanHeaders,
 }) => {
   // Legacy: parent may have headers, but OnlineStatus now generates fresh ones per request.
@@ -55,10 +57,17 @@ const StatsSection = ({
         </RadioContainer>
         <NavigateButton
           onPress={() => navigation.navigate('DeviceStatuses', { selectedOption, selectedMockup, selectedResidenceId, lanAuthToken })}
+          disabled={actionsDisabled}
+          actionsDisabled={actionsDisabled}
         >
-          <NavigateText>All Devices Status</NavigateText>
+          <NavigateText actionsDisabled={actionsDisabled}>All Devices Status</NavigateText>
         </NavigateButton>
-        <OnlineStatus selectedOption={selectedOption} selectedMockup={selectedMockup} residenceId={selectedResidenceId} />
+        <OnlineStatus
+          selectedOption={selectedOption}
+          selectedMockup={selectedMockup}
+          residenceId={selectedResidenceId}
+          onStatusChange={onOnlineStatusChange}
+        />
       </RadioRow>
 
       <MockupRow>
@@ -76,8 +85,9 @@ const StatsSection = ({
       <View style={[styles.actionDockContainer, { marginTop: 12 }]}> 
         {/* Contacts */}
         <TouchableOpacity 
-          style={styles.actionButtonWrapper} 
+          style={[styles.actionButtonWrapper, actionsDisabled ? styles.disabledActionButtonWrapper : null]} 
           onPress={() => navigation.navigate('SdkTest', { selectedMockup, selectedOption, selectedResidenceId })}
+          disabled={actionsDisabled}
           activeOpacity={0.7}
         >
           <View style={[styles.actionButtonIcon, { backgroundColor: '#f2ebff' }]}> 
@@ -88,8 +98,9 @@ const StatsSection = ({
 
         {/* Smart Lock */}
         <TouchableOpacity 
-          style={styles.actionButtonWrapper} 
+          style={[styles.actionButtonWrapper, actionsDisabled ? styles.disabledActionButtonWrapper : null]} 
           onPress={() => navigation.navigate('SmartLockScreen', { selectedOption, selectedMockup, selectedResidenceId })}
+          disabled={actionsDisabled}
           activeOpacity={0.7}
         >
           <View style={[styles.actionButtonIcon, { backgroundColor: '#efe6ff' }]}> 
@@ -100,7 +111,7 @@ const StatsSection = ({
 
         {/* Intercom */}
         <TouchableOpacity 
-          style={styles.actionButtonWrapper} 
+          style={[styles.actionButtonWrapper, actionsDisabled ? styles.disabledActionButtonWrapper : null]} 
           onPress={() => navigation.navigate('IntercomScreen', {
             selectedOption,
             selectedMockup,
@@ -110,6 +121,7 @@ const StatsSection = ({
             wanRtspUrl: intercomConfig.wanRtspUrl,
             LAN_HEADERS: lanHeaders
           })}
+          disabled={actionsDisabled}
           activeOpacity={0.7}
         >
           <View style={[styles.actionButtonIcon, { backgroundColor: '#efe6ff' }]}> 
@@ -120,8 +132,9 @@ const StatsSection = ({
 
         {/* IP Camera */}
         <TouchableOpacity 
-          style={styles.actionButtonWrapper} 
+          style={[styles.actionButtonWrapper, actionsDisabled ? styles.disabledActionButtonWrapper : null]} 
           onPress={() => navigation.navigate('IPCameraScreen', { selectedOption })}
+          disabled={actionsDisabled}
           activeOpacity={0.7}
         >
           <View style={[styles.actionButtonIcon, { backgroundColor: '#f2ebff' }]}> 
@@ -132,8 +145,9 @@ const StatsSection = ({
 
         {/* Scenes */}
         <TouchableOpacity
-          style={styles.actionButtonWrapper}
+          style={[styles.actionButtonWrapper, actionsDisabled ? styles.disabledActionButtonWrapper : null]}
           onPress={() => navigation.navigate('ScenesScreen', { selectedOption, selectedMockup, selectedResidenceId })}
+          disabled={actionsDisabled}
           activeOpacity={0.7}
         >
           <View style={[styles.actionButtonIcon, { backgroundColor: '#efe6ff' }]}> 
@@ -265,14 +279,15 @@ const RadioText = styled.Text`
 const NavigateButton = styled(TouchableOpacity)`
   flex-direction: row;
   align-items: center;
-  background-color: #efe6ff;
+  background-color: ${(props) => (props.actionsDisabled ? '#f1edf7' : '#efe6ff')};
   padding: 8px 10px;
   border-radius: 12px;
+  opacity: ${(props) => (props.actionsDisabled ? 0.45 : 1)};
 `;
 
 const NavigateText = styled.Text`
   font-size: 11px;
-  color: #5d41b0;
+  color: ${(props) => (props.actionsDisabled ? '#9f94b8' : '#5d41b0')};
   font-weight: 700;
 `;
 
