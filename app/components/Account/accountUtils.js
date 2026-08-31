@@ -11,6 +11,32 @@ export const buildGetAccountInfoRequest = ({ requestId }) => ({
   param: {},
 });
 
+export const buildUpdateAccountInfoRequest = ({ requestId, firstName, lastName }) => ({
+  command: 'update_account_info',
+  id: requestId,
+  param: {
+    first_name: normalizeText(firstName),
+    last_name: normalizeText(lastName),
+  },
+});
+
+export const buildUpdateAccountPasswordRequest = ({ requestId, newPassword, originPassword }) => ({
+  command: 'update_account_password',
+  id: requestId,
+  param: {
+    new_password: newPassword,
+    origin_password: originPassword,
+  },
+});
+
+export const buildDeleteAccountInfoRequest = ({ requestId, accountId }) => ({
+  command: 'delete_account_info',
+  id: requestId,
+  param: {
+    account_id: normalizeText(accountId),
+  },
+});
+
 export const buildGetFamilyInfoRequest = ({ isLan, residenceId, requestId }) => ({
   command: 'get_family_info',
   id: requestId,

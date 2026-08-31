@@ -235,3 +235,39 @@ def login_user(request):
     except Exception:
         logger.exception("Unexpected login error")
         return _error_response("Unable to sign in right now. Please try again.", 500)
+
+
+@csrf_exempt
+def update_user_password(request):
+    if request.method != 'POST':
+        return _error_response("Method must be POST", 405)
+
+    try:
+        data = _parse_json_body(request)
+        email = (data.get('email') or '').strip().lower()
+        origin_password = data.get('origin_password') or ''
+        new_password = data.get('new_password') or ''
+
+        if not email or not origin_password or not new_password:
+            return _error_response("Email, current password, and new password are required.", 400)
+
+        user = UserAccount.objects.filter(email=email).first()
+        if not user or user.password != origin_password:
+            return _error_response("Invalid email or password.", 401)
+
+        user.password = new_password
+        user.save(update_fields=['password'])
+
+        return JsonResponse(
+            {
+                "success": True,
+                "message": "Password updated successfully.",
+            },
+            status=200,
+        )
+
+    except UserVisibleError as exc:
+        return _error_response(exc.message, exc.status)
+    except Exception:
+        logger.exception("Unexpected password update error")
+        return _error_response("Unable to update password right now. Please try again.", 500)

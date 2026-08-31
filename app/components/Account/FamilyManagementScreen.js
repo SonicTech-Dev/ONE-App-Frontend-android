@@ -12,7 +12,6 @@ import {
   View,
 } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
-import { CommonActions } from '@react-navigation/native';
 import { useAuth } from '../../context/AuthContext';
 import { MOCKUP_OPTIONS } from '../Smart/SmartScreenSections/SmartScreen.constants';
 import Screen from '../Screen';
@@ -41,7 +40,7 @@ const RESIDENCE_IDS = {
 
 export default function FamilyManagementScreen({ route, navigation }) {
   const currentAccountId = route?.params?.currentAccountId || '';
-  const { networkMode, getActiveLanToken, getActiveWanToken, logout } = useAuth();
+  const { networkMode, getActiveLanToken, getActiveWanToken } = useAuth();
   const activeNetworkMode = normalizeNetworkMode(route?.params?.selectedOption, networkMode);
   const isLan = activeNetworkMode === 'LAN';
   const selectedMockup = route?.params?.selectedMockup === MOCKUP_OPTIONS.MOCKUP_1
@@ -243,24 +242,6 @@ export default function FamilyManagementScreen({ route, navigation }) {
     setIsAdminPickerVisible(true);
   };
 
-  const handleLogout = () => {
-    Alert.alert(
-      'Log out?',
-      "You'll need to sign in again to continue using the app.",
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Log out',
-          style: 'destructive',
-          onPress: async () => {
-            await logout();
-            navigation.dispatch(CommonActions.reset({ index: 0, routes: [{ name: 'WelcomeScreen' }] }));
-          },
-        },
-      ],
-    );
-  };
-
   return (
     <Screen style={styles.screen}>
       <ScrollView
@@ -399,10 +380,6 @@ export default function FamilyManagementScreen({ route, navigation }) {
           </View>
         )}
 
-        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout} accessibilityLabel="Log out">
-          <MaterialCommunityIcons name="logout" size={18} color="#c35b6f" />
-          <Text style={styles.logoutButtonText}>Log out</Text>
-        </TouchableOpacity>
       </ScrollView>
 
       <Modal
@@ -485,8 +462,6 @@ const styles = StyleSheet.create({
   memberEmail: { color: '#8975a8', fontSize: 12, fontWeight: '600', marginTop: 2 },
   transferButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#6f4bd8', borderRadius: 14, minHeight: 48, paddingHorizontal: 16, marginBottom: 16 },
   transferButtonText: { color: '#ffffff', fontSize: 14, fontWeight: '800', marginLeft: 8 },
-  logoutButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#ffffff', borderRadius: 14, borderWidth: 1, borderColor: '#f0d3d9', minHeight: 48, paddingHorizontal: 16, marginTop: 24 },
-  logoutButtonText: { color: '#c35b6f', fontSize: 14, fontWeight: '800', marginLeft: 8 },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(30, 18, 56, 0.45)', justifyContent: 'center', padding: 22 },
   modalCard: { backgroundColor: '#ffffff', borderRadius: 20, padding: 20, maxHeight: '75%' },
   modalTitle: { color: '#34225f', fontSize: 18, fontWeight: '800' },

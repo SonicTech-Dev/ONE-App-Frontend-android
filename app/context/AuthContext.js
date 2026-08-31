@@ -161,6 +161,17 @@ export function AuthProvider({ children }) {
     await AsyncStorage.setItem('savedOfflineUsers', JSON.stringify(offlineUsers));
   };
 
+  const updateStoredPassword = async (password, emailOverride = null) => {
+    const email = emailOverride || userCredentials?.email || await AsyncStorage.getItem('activeEmail');
+    setUserCredentials((currentCredentials) => (
+      currentCredentials ? { ...currentCredentials, password } : currentCredentials
+    ));
+    await AsyncStorage.setItem('activePassword', password);
+    if (email) {
+      await cacheOfflineUser(email, password);
+    }
+  };
+
   /** Dynamically grabs from cache instantly, or fetches from Network exactly 1 time! */
   const getActiveLanToken = async (forceRefresh = false) => {
     if (lanToken && !forceRefresh) return lanToken;
@@ -240,7 +251,7 @@ export function AuthProvider({ children }) {
   return (
     <AuthContext.Provider value={{ 
       lanToken, wanToken, getActiveLanToken, getActiveWanToken,
-      networkMode, residenceId, authRole, isInitializing, loginLan, loginWan, logout, generateGeneralWanToken, verifyOnlineAccount
+      networkMode, residenceId, authRole, isInitializing, loginLan, loginWan, logout, generateGeneralWanToken, verifyOnlineAccount, updateStoredPassword
     }}>
       {children}
     </AuthContext.Provider>
