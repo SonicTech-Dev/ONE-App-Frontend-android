@@ -96,6 +96,12 @@ const getContacts = (apiResult) => {
   return contacts;
 };
 
+const formatMockupLabel = (mockup) => {
+  if (mockup === MOCKUP_OPTIONS.MOCKUP_1) return 'Mockup 1';
+  if (mockup === MOCKUP_OPTIONS.MOCKUP_2) return 'Mockup 2';
+  return 'None';
+};
+
 async function requestPermissionsIfNeeded() {
   if (Platform.OS === 'android') {
     const camera = PermissionsAndroid.PERMISSIONS.CAMERA;
@@ -223,6 +229,11 @@ export default function SdkContactScreen({ navigation, route }) {
   useEffect(() => {
     Akuvox.getSipStatus().then(setSipStatus).catch(() => {});
   }, []);
+
+  const selectedMockupLabel = formatMockupLabel(selectedMockup);
+  const activeTransportLabel = registeredTransport ? registeredTransport.toUpperCase() : 'None';
+  const activeMockupLabel = registeredMockup ? formatMockupLabel(registeredMockup) : 'None';
+  const transportReady = isTransportReady();
 
   const uniqueSipTargets = (items) => {
     const seen = new Set();
@@ -482,9 +493,28 @@ export default function SdkContactScreen({ navigation, route }) {
           </Text>
         </View>
       </View>
-      <Text style={styles.transportHint}>
-        Selected: {selectedTransport.toUpperCase()} ({selectedMockup}) | Active: {registeredTransport ? registeredTransport.toUpperCase() : 'None'} ({registeredMockup || 'none'})
-      </Text>
+      <View style={styles.transportSummary}>
+        <View style={styles.transportSummaryRow}>
+          <View style={styles.transportSummaryItem}>
+            <Text style={styles.transportLabel}>Selected setup</Text>
+            <View style={styles.transportChipRow}>
+              <Text style={[styles.transportChip, styles.transportChipPrimary]}>{selectedTransport.toUpperCase()}</Text>
+              <Text style={styles.transportChip}>{selectedMockupLabel}</Text>
+            </View>
+          </View>
+          <View style={styles.transportDivider} />
+          <View style={styles.transportSummaryItem}>
+            <Text style={styles.transportLabel}>Active line</Text>
+            <View style={styles.transportChipRow}>
+              <Text style={[styles.transportChip, transportReady ? styles.transportChipReady : styles.transportChipMuted]}>{activeTransportLabel}</Text>
+              <Text style={styles.transportChip}>{activeMockupLabel}</Text>
+            </View>
+          </View>
+        </View>
+        <Text style={[styles.transportState, transportReady ? styles.transportStateReady : styles.transportStateWaiting]}>
+          {transportReady ? 'Ready for calls' : 'Waiting for matching SIP registration'}
+        </Text>
+      </View>
 
       <FlatList
         data={contacts}
@@ -611,13 +641,81 @@ const styles = StyleSheet.create({
   separator: {
     height: 1,
     backgroundColor: 'transparent', 
-  transportHint: {
-    marginTop: 6,
-    marginHorizontal: 16,
-    color: '#6e67a5',
-    fontSize: 12,
-    fontWeight: '600',
   },
+  transportSummary: {
+    marginHorizontal: 16,
+    marginTop: 4,
+    marginBottom: 6,
+    padding: 14,
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#e9deff',
+    shadowColor: '#7f58e2',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 2,
+  },
+  transportSummaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  transportSummaryItem: {
+    flex: 1,
+  },
+  transportLabel: {
+    fontSize: 11,
+    color: '#8d80b5',
+    fontWeight: '800',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+    marginBottom: 7,
+  },
+  transportChipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  transportChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: '#f5f2ff',
+    color: '#584a86',
+    fontSize: 12,
+    fontWeight: '800',
+    marginRight: 7,
+    marginBottom: 4,
+    overflow: 'hidden',
+  },
+  transportChipPrimary: {
+    backgroundColor: '#6f4bd8',
+    color: '#ffffff',
+  },
+  transportChipReady: {
+    backgroundColor: '#e6f8ed',
+    color: '#217a43',
+  },
+  transportChipMuted: {
+    backgroundColor: '#f0edf7',
+    color: '#8b82a5',
+  },
+  transportDivider: {
+    width: 1,
+    height: 45,
+    backgroundColor: '#eee6ff',
+    marginHorizontal: 12,
+  },
+  transportState: {
+    marginTop: 10,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  transportStateReady: {
+    color: '#217a43',
+  },
+  transportStateWaiting: {
+    color: '#8b6a00',
   },
   sipStatus: {
     marginTop: 10,
