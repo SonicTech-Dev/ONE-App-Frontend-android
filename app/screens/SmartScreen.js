@@ -1,5 +1,6 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { Animated, Alert, Platform, PermissionsAndroid, NativeModules, NativeEventEmitter } from 'react-native';
+import { CommonActions } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Header from '../components/Smart/Header';
 import StatsSection from '../components/Smart/StatsSection';
@@ -185,7 +186,7 @@ const SELF_CALLBACK_SUPPRESS_MS = 2200;
 const HEADER_HEIGHT = 240;
 
 export default function SmartScreen({ navigation }) {
-  const { getActiveLanToken, getActiveWanToken, networkMode } = useAuth();
+  const { getActiveLanToken, getActiveWanToken, networkMode, logout } = useAuth();
   
   const getHeaders = async () => {
     const activeToken = selectedOption === 'LAN' ? await getActiveLanToken() : await getActiveWanToken();
@@ -265,14 +266,31 @@ export default function SmartScreen({ navigation }) {
     return (store.get(exactKey) || 0) > now || (store.get(genericKey) || 0) > now;
   }, [makeSuppressKey]);
 
+  const resetToLogin = useCallback(async () => {
+    await logout();
+    navigation.dispatch(CommonActions.reset({ index: 0, routes: [{ name: 'WelcomeScreen' }] }));
+  }, [logout, navigation]);
+
+  const handleAuthExpired = useCallback(() => {
+    Alert.alert(
+      'Session expired',
+      'Your account was signed in elsewhere or your token is no longer valid. Please sign in again.',
+      [{ text: 'OK', onPress: resetToLogin }],
+    );
+  }, [resetToLogin]);
+
   useEffect(() => {
     console.log('[SmartScreen] selectedOption:', selectedOption);
     console.log('[SmartScreen] callbackRegistered:', callbackRegistered);
   }, [selectedOption, callbackRegistered]);
 
   useEffect(() => {
-    if (selectedOption !== 'WAN') return;
+    if (selectedOption !== 'WAN') {
+      setFamilyListLoading(false);
+      return undefined;
+    }
     let mounted = true;
+    let intervalId = null;
 
     const loadFamilyList = async () => {
       setFamilyListLoading(true);
@@ -288,6 +306,14 @@ export default function SmartScreen({ navigation }) {
           body: JSON.stringify({ command: 'get_family_list', id: SIP_REQUEST_ID, param: {} }),
         });
         const payload = await response.json();
+        if (response.status === 401 || response.status === 403) {
+          if (mounted) handleAuthExpired();
+          return;
+        }
+        if (payload?.success === false && /invalid|expired|unauthorized|forbidden|token|login|credential/i.test(String(payload?.message || payload?.error || payload?.detail || ''))) {
+          if (mounted) handleAuthExpired();
+          return;
+        }
         if (!response.ok || !Array.isArray(payload?.result)) {
           throw new Error(`Unable to load family list (${response.status})`);
         }
@@ -308,6 +334,10 @@ export default function SmartScreen({ navigation }) {
           setSelectedFamilyOnline(typeof currentFamily?.online === 'boolean' ? currentFamily.online : null);
         }
       } catch (error) {
+        if (error?.code === 'INVALID_CREDENTIALS' || /invalid username or password|unauthorized|forbidden/i.test(String(error?.message || ''))) {
+          if (mounted) handleAuthExpired();
+          return;
+        }
         console.warn('[SmartScreen] Failed to load WAN family list:', error?.message || error);
       } finally {
         if (mounted) setFamilyListLoading(false);
@@ -315,10 +345,12 @@ export default function SmartScreen({ navigation }) {
     };
 
     loadFamilyList();
+    intervalId = setInterval(loadFamilyList, 10000);
     return () => {
       mounted = false;
+      if (intervalId) clearInterval(intervalId);
     };
-  }, [getActiveWanToken, selectedOption]);
+  }, [getActiveWanToken, handleAuthExpired, selectedOption]);
 
   // Reset callback registration whenever transport or mockup changes so registration
   // always matches the active selection.
@@ -1003,7 +1035,9 @@ export default function SmartScreen({ navigation }) {
           familyOptions={familyOptions}
           familyListLoading={familyListLoading}
           onSelectFamily={handleFamilySelect}
+          selectedFamilyOnline={selectedFamilyOnline}
           onOnlineStatusChange={setSelectedFamilyOnline}
+          onAuthExpired={handleAuthExpired}
           actionsDisabled={smartSectionsDisabled}
         />
       </Animated.View>

@@ -11,25 +11,39 @@ const StatusText = styled.Text`
   margin-left: 16px;
 `;
 
+const isAuthFailurePayload = (payload) => {
+  const message = [
+    payload?.message,
+    payload?.error,
+    payload?.detail,
+    payload?.result?.message,
+    payload?.result?.error,
+    payload?.result?.detail,
+  ].filter(Boolean).join(' ').toLowerCase();
+
+  return /invalid|expired|unauthorized|forbidden|token|login|credential/.test(message);
+};
+
 /**
  * OnlineStatus
  *
  * Builds new LAN headers for every request using buildLanHeaders(),
- * while WAN keeps using the backend proxy. This ignores lanAuthToken
- * and derives headers fresh per poll.
+ * while WAN receives the selected family's online flag from get_family_list.
  */
 export default function OnlineStatus({
   selectedOption = 'LAN',
   selectedMockup = MOCKUP_OPTIONS.MOCKUP_2,
-  pollingInterval = 30000,
+  pollingInterval = 10000,
   wanBackendUrl = 'https://one-development.soniciot.com/device_status/',
   lanUrl = 'http://192.168.2.115/api/v1.0/device',
   requestId = 'c45e846ca23ab42c9ae469d988ae32a96',
   deviceId,
   residenceId,
+  wanOnlineStatus = null,
   onStatusChange,
+  onAuthExpired,
 }) {
-  const { getActiveLanToken, getActiveWanToken } = useAuth();
+  const { getActiveLanToken } = useAuth();
   const [isOnline, setIsOnline] = useState(null);
   const [loading, setLoading] = useState(false);
   const intervalRef = useRef(null);
@@ -59,50 +73,22 @@ export default function OnlineStatus({
     async function fetchStatus() {
       setLoading(true);
 
+      if (selectedOption === 'WAN') {
+        updateOnlineStatus(typeof wanOnlineStatus === 'boolean' ? wanOnlineStatus : null);
+        setLoading(false);
+        return;
+      }
+
       const lanBody = {
         command: 'get_device_info',
         id: requestId,
         param: { device_id: activeDeviceId },
       };
-      const wanBody = {
-        command: 'get_device_list',
-        id: requestId,
-        param: { residence_id: activeResidenceId, show_ability: true },
-      };
 
       try {
-        if (selectedOption === 'WAN') {
-          console.log('[OnlineStatus] selectedOption: WAN -> calling backend proxy', wanBackendUrl);
-          const activeToken = await getActiveWanToken();
-          const res = await fetch(wanBackendUrl, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Accept': 'application/json',
-              'Authorization': `Bearer ${activeToken}`
-            },
-            body: JSON.stringify(wanBody),
-            signal: controller.signal,
-          });
-          if (!res.ok) {
-            const errorBody = await res.text(); 
-            console.warn('[OnlineStatus] WAN backend non-2xx', { 
-              status: res.status, 
-              body: errorBody //<--- PRINTING IT HERE!
-            });
-            console.warn('[OnlineStatus] WAN backend non-2xx', { status: res.status, url: wanBackendUrl });
-            if (mounted) setIsOnline(false);
-            return;
-          }
-          const json = await res.json();
-          const onlineFlag = extractDeviceOnlineFromWanList(json, activeDeviceId);
-          if (mounted) setIsOnline(onlineFlag === null ? false : onlineFlag);
-          return;
-        }
-
         // LAN path
         console.log('[OnlineStatus] selectedOption: LAN -> calling LAN URL', lanUrl);
-        const activeToken = await getActiveLanToken();
+        const activeToken = await getActiveLanToken(true);
 
         const headers = {
           'Content-Type': 'application/json',
@@ -112,6 +98,7 @@ export default function OnlineStatus({
 
         if (!headers.Authorization) {
           console.warn('[OnlineStatus] No Authorization derived from buildLanHeaders; marking offline.');
+          if (onAuthExpired) onAuthExpired();
           updateOnlineStatus(false);
           return;
         }
@@ -145,11 +132,19 @@ export default function OnlineStatus({
             body: bodyText,
             usedAuthorization: headers.Authorization || null,
           });
+          if (res.status === 401 || res.status === 403) {
+            if (onAuthExpired) onAuthExpired();
+          }
           updateOnlineStatus(false);
           return;
         }
 
         const json = await res.json();
+        if (json?.success === false && isAuthFailurePayload(json)) {
+          if (onAuthExpired) onAuthExpired();
+          updateOnlineStatus(false);
+          return;
+        }
         const onlineFlag = json && json.result && typeof json.result.online === 'boolean' ? json.result.online : null;
         updateOnlineStatus(onlineFlag === null ? false : onlineFlag);
       } catch (err) {
@@ -159,6 +154,9 @@ export default function OnlineStatus({
           console.warn('[OnlineStatus] LAN fetch timeout (device unreachable?)', { url: lanUrl });
         } else {
           console.warn('[OnlineStatus] LAN/WAN fetch error', err);
+        }
+        if (err?.code === 'INVALID_CREDENTIALS' || /invalid username or password|unauthorized|forbidden/i.test(String(err?.message || ''))) {
+          if (onAuthExpired) onAuthExpired();
         }
         updateOnlineStatus(false);
       } finally {
@@ -178,15 +176,15 @@ export default function OnlineStatus({
   }, [
     selectedOption,
     pollingInterval,
-    wanBackendUrl,
     lanUrl,
     requestId,
     activeDeviceId,
-    activeResidenceId,
+    wanOnlineStatus,
     onStatusChange,
+    onAuthExpired,
   ]);
 
-  if (loading && isOnline === null) {
+  if (isOnline === null) {
     return (
       <View>
         <Text style={{ marginLeft: 16, color: '#777' }}>Checking...</Text>

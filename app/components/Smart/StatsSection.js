@@ -18,7 +18,9 @@ const StatsSection = ({
   familyOptions = [],
   familyListLoading = false,
   onSelectFamily,
+  selectedFamilyOnline = null,
   onOnlineStatusChange,
+  onAuthExpired,
   actionsDisabled = false,
   lanHeaders,
 }) => {
@@ -66,7 +68,10 @@ const StatsSection = ({
           selectedOption={selectedOption}
           selectedMockup={selectedMockup}
           residenceId={selectedResidenceId}
+          pollingInterval={selectedOption === 'LAN' ? 10000 : 0}
+          wanOnlineStatus={selectedFamilyOnline}
           onStatusChange={onOnlineStatusChange}
+          onAuthExpired={onAuthExpired}
         />
       </RadioRow>
 
