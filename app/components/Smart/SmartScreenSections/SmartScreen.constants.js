@@ -590,6 +590,16 @@ export const MOCKUP_2_DEVICE_CATEGORIES = [
 
 export const INITIAL_DEVICE_CATEGORIES = MOCKUP_2_DEVICE_CATEGORIES;
 
+export const SMARTSCREEN_RESIDENCE_IDS = {
+  MOCKUP_1: 'r45844047053e43d78fe5272c5badbd3a',
+  MOCKUP_2: 'rabd2c6d2aecc4ce3be11e25b4ecd3c82',
+};
+
+export const DEVICE_CATEGORIES_BY_RESIDENCE_ID = {
+  [SMARTSCREEN_RESIDENCE_IDS.MOCKUP_1]: MOCKUP_1_DEVICE_CATEGORIES,
+  [SMARTSCREEN_RESIDENCE_IDS.MOCKUP_2]: MOCKUP_2_DEVICE_CATEGORIES,
+};
+
 export const MOCKUP_OPTIONS = {
   MOCKUP_1: 'mockup1',
   MOCKUP_2: 'mockup2',
@@ -616,6 +626,15 @@ export const getDeviceCategoriesByMockup = (selectedMockup = MOCKUP_OPTIONS.MOCK
   const source = selectedMockup === MOCKUP_OPTIONS.MOCKUP_1
     ? MOCKUP_1_DEVICE_CATEGORIES
     : MOCKUP_2_DEVICE_CATEGORIES;
+
+  return source.map((category) => ({
+    ...category,
+    items: category.items.map((device) => ({ ...device })),
+  }));
+};
+
+export const getDeviceCategoriesByResidenceId = (residenceId) => {
+  const source = DEVICE_CATEGORIES_BY_RESIDENCE_ID[residenceId] || [];
 
   return source.map((category) => ({
     ...category,

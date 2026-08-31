@@ -3,7 +3,9 @@ import styled from 'styled-components/native';
 import { useRoute } from '@react-navigation/native';
 import {
   MOCKUP_OPTIONS,
+  SMARTSCREEN_RESIDENCE_IDS,
   getDeviceCategoriesByMockup,
+  getDeviceCategoriesByResidenceId,
 } from '../Smart/SmartScreenSections/SmartScreen.constants';
 import DeviceListOnlineStatus from './online_status_list';
 
@@ -12,12 +14,19 @@ const DeviceStatuses = () => {
   const {
     selectedOption = 'LAN',
     selectedMockup = MOCKUP_OPTIONS.MOCKUP_2,
+    selectedResidenceId,
   } = route.params || {};
 
   const [statusMap, setStatusMap] = useState({});
   const [loading, setLoading] = useState(false);
-  const deviceCategories = useMemo(() => getDeviceCategoriesByMockup(selectedMockup), [selectedMockup]);
-  const allowNameFallback = selectedMockup === MOCKUP_OPTIONS.MOCKUP_2;
+  const deviceCategories = useMemo(() => (
+    selectedResidenceId
+      ? getDeviceCategoriesByResidenceId(selectedResidenceId)
+      : getDeviceCategoriesByMockup(selectedMockup)
+  ), [selectedMockup, selectedResidenceId]);
+  const allowNameFallback = selectedResidenceId
+    ? selectedResidenceId === SMARTSCREEN_RESIDENCE_IDS.MOCKUP_2
+    : selectedMockup === MOCKUP_OPTIONS.MOCKUP_2;
 
   const handleStatuses = useCallback((map) => {
     setStatusMap(map || {});
@@ -32,6 +41,7 @@ const DeviceStatuses = () => {
       <DeviceListOnlineStatus
         selectedOption={selectedOption}
         selectedMockup={selectedMockup}
+        residenceId={selectedResidenceId}
         pollingInterval={30000}
         onStatuses={handleStatuses}
         onLoadingChange={handleLoadingChange}

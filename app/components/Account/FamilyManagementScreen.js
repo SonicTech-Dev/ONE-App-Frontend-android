@@ -48,7 +48,7 @@ export default function FamilyManagementScreen({ route, navigation }) {
   const selectedMockup = route?.params?.selectedMockup === MOCKUP_OPTIONS.MOCKUP_1
     ? MOCKUP_OPTIONS.MOCKUP_1
     : MOCKUP_OPTIONS.MOCKUP_2;
-  const familyResidenceId = RESIDENCE_IDS[selectedMockup];
+  const familyResidenceId = route?.params?.selectedResidenceId || RESIDENCE_IDS[selectedMockup];
   const [familyInfo, setFamilyInfo] = useState(null);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');

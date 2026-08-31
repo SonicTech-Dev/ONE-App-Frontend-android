@@ -50,7 +50,7 @@ export default function AccountDetailsScreen({ route, navigation }) {
   const selectedMockup = route?.params?.selectedMockup === MOCKUP_OPTIONS.MOCKUP_1
     ? MOCKUP_OPTIONS.MOCKUP_1
     : MOCKUP_OPTIONS.MOCKUP_2;
-  const selectedResidenceId = RESIDENCE_IDS[selectedMockup];
+  const selectedResidenceId = route?.params?.selectedResidenceId || RESIDENCE_IDS[selectedMockup];
   const [accountInfo, setAccountInfo] = useState(null);
   const [authRole, setAuthRole] = useState('');
   const [loading, setLoading] = useState(true);
@@ -506,6 +506,7 @@ export default function AccountDetailsScreen({ route, navigation }) {
                 currentAccountId: accountInfo?.account_id,
                 selectedOption: activeNetworkMode,
                 selectedMockup,
+                selectedResidenceId,
               })}
               accessibilityLabel="View family management"
             >

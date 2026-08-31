@@ -10,7 +10,8 @@ import DevicModal from '../components/Modal';
 import CallbackServer from '../components/Services/Server';
 import {
   MOCKUP_OPTIONS,
-  getDeviceCategoriesByMockup,
+  SMARTSCREEN_RESIDENCE_IDS,
+  getDeviceCategoriesByResidenceId,
 } from '../components/Smart/SmartScreenSections/SmartScreen.constants';
 import { controlDevice, deviceStatus } from '../components/Smart/SmartScreenSections/api';
 import styles from '../components/Smart/SmartScreenSections/SmartScreen.styles';
@@ -23,15 +24,40 @@ import routes from '../navigation/routes';
 const { Akuvox } = NativeModules;
 const LAN_CALLBACK_CONFIG_URL = 'http://192.168.2.115/api/v1.0/callback';
 const WAN_CALLBACK_CONFIG_URL = `${BACKEND_URL}/api/register_callback/wan/`;
+const WAN_FAMILY_URL = 'https://one-development.soniciot.com/get-family-details/';
 
 // SIP credential API constants
 const SIP_REQUEST_ID = 'c45e846ca23ab42c9ae469d988ae32a96';
-const SIP_DEFAULT_RESIDENCE_ID = 'rabd2c6d2aecc4ce3be11e25b4ecd3c82';
+const SIP_DEFAULT_RESIDENCE_ID = SMARTSCREEN_RESIDENCE_IDS.MOCKUP_2;
+const MOCKUP_RESIDENCE_IDS = {
+  [MOCKUP_OPTIONS.MOCKUP_1]: SMARTSCREEN_RESIDENCE_IDS.MOCKUP_1,
+  [MOCKUP_OPTIONS.MOCKUP_2]: SMARTSCREEN_RESIDENCE_IDS.MOCKUP_2,
+};
 
 function resolveResidenceId(selectedMockup = MOCKUP_OPTIONS.MOCKUP_2) {
-  return selectedMockup === MOCKUP_OPTIONS.MOCKUP_1
-    ? 'r45844047053e43d78fe5272c5badbd3a'
-    : SIP_DEFAULT_RESIDENCE_ID;
+  return MOCKUP_RESIDENCE_IDS[selectedMockup] || SIP_DEFAULT_RESIDENCE_ID;
+}
+
+function resolveMockupByResidenceId(residenceId) {
+  if (residenceId === MOCKUP_RESIDENCE_IDS[MOCKUP_OPTIONS.MOCKUP_1]) return MOCKUP_OPTIONS.MOCKUP_1;
+  return MOCKUP_OPTIONS.MOCKUP_2;
+}
+
+function buildFallbackFamilyOptions() {
+  return [
+    {
+      family_name: 'Mockup Panel 1',
+      residence_id: MOCKUP_RESIDENCE_IDS[MOCKUP_OPTIONS.MOCKUP_1],
+      installed: true,
+      online: false,
+    },
+    {
+      family_name: 'Mockup Panel 2',
+      residence_id: MOCKUP_RESIDENCE_IDS[MOCKUP_OPTIONS.MOCKUP_2],
+      installed: true,
+      online: false,
+    },
+  ];
 }
 
 async function fetchWanSipCredentials(wanToken, residenceId = SIP_DEFAULT_RESIDENCE_ID) {
@@ -173,8 +199,11 @@ export default function SmartScreen({ navigation }) {
   // Initialise from the mode determined at login (LAN or WAN).
   const [selectedOption, setSelectedOption] = useState(networkMode || 'WAN');
   const [selectedMockup, setSelectedMockup] = useState(MOCKUP_OPTIONS.MOCKUP_2);
-  const activeResidenceId = resolveResidenceId(selectedMockup);
-  const [deviceCategories, setDeviceCategories] = useState(() => getDeviceCategoriesByMockup(MOCKUP_OPTIONS.MOCKUP_2));
+  const [selectedResidenceId, setSelectedResidenceId] = useState(MOCKUP_RESIDENCE_IDS[MOCKUP_OPTIONS.MOCKUP_2]);
+  const [familyOptions, setFamilyOptions] = useState(buildFallbackFamilyOptions);
+  const [familyListLoading, setFamilyListLoading] = useState(false);
+  const activeResidenceId = selectedResidenceId || resolveResidenceId(selectedMockup);
+  const [deviceCategories, setDeviceCategories] = useState(() => getDeviceCategoriesByResidenceId(MOCKUP_RESIDENCE_IDS[MOCKUP_OPTIONS.MOCKUP_2]));
   const [activeTab, setActiveTab] = useState('All Devices');
   const scrollY = useRef(new Animated.Value(0)).current;
   const colors = useColors();
@@ -182,7 +211,7 @@ export default function SmartScreen({ navigation }) {
   const [selectedDevice, setSelectedDevice] = useState(null);
   const [selectedDeviceStatus, setSelectedDeviceStatus] = useState(null);
   const [callbackRegistered, setCallbackRegistered] = useState(false);
-  const strictStatusLookup = selectedMockup === MOCKUP_OPTIONS.MOCKUP_1;
+  const strictStatusLookup = activeResidenceId === SMARTSCREEN_RESIDENCE_IDS.MOCKUP_1;
 
   // Local IPv4 state
   const [localIpv4, setLocalIpv4] = useState(null);
@@ -197,6 +226,8 @@ export default function SmartScreen({ navigation }) {
   useEffect(() => { selectedOptionRef.current = selectedOption; }, [selectedOption]);
   const selectedMockupRef = useRef(selectedMockup);
   useEffect(() => { selectedMockupRef.current = selectedMockup; }, [selectedMockup]);
+  const selectedResidenceIdRef = useRef(activeResidenceId);
+  useEffect(() => { selectedResidenceIdRef.current = activeResidenceId; }, [activeResidenceId]);
   const selectedDeviceRef = useRef(selectedDevice);
   const modalVisibleRef = useRef(modalVisible);
   useEffect(() => { selectedDeviceRef.current = selectedDevice; }, [selectedDevice]);
@@ -238,6 +269,52 @@ export default function SmartScreen({ navigation }) {
     console.log('[SmartScreen] callbackRegistered:', callbackRegistered);
   }, [selectedOption, callbackRegistered]);
 
+  useEffect(() => {
+    if (selectedOption !== 'WAN') return;
+    let mounted = true;
+
+    const loadFamilyList = async () => {
+      setFamilyListLoading(true);
+      try {
+        const wanToken = await getActiveWanToken();
+        const response = await fetch(WAN_FAMILY_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'Authorization': `Bearer ${wanToken}`,
+          },
+          body: JSON.stringify({ command: 'get_family_list', id: SIP_REQUEST_ID, param: {} }),
+        });
+        const payload = await response.json();
+        if (!response.ok || !Array.isArray(payload?.result)) {
+          throw new Error(`Unable to load family list (${response.status})`);
+        }
+        if (!mounted) return;
+
+        const nextFamilyOptions = payload.result.filter((family) => family?.residence_id);
+        if (nextFamilyOptions.length === 0) return;
+
+        setFamilyOptions(nextFamilyOptions);
+        const hasCurrentSelection = nextFamilyOptions.some((family) => family.residence_id === selectedResidenceIdRef.current);
+        if (!hasCurrentSelection) {
+          const preferredFamily = nextFamilyOptions.find((family) => family.residence_id === MOCKUP_RESIDENCE_IDS[MOCKUP_OPTIONS.MOCKUP_2]) || nextFamilyOptions[0];
+          setSelectedResidenceId(preferredFamily.residence_id);
+          setSelectedMockup(resolveMockupByResidenceId(preferredFamily.residence_id));
+        }
+      } catch (error) {
+        console.warn('[SmartScreen] Failed to load WAN family list:', error?.message || error);
+      } finally {
+        if (mounted) setFamilyListLoading(false);
+      }
+    };
+
+    loadFamilyList();
+    return () => {
+      mounted = false;
+    };
+  }, [getActiveWanToken, selectedOption]);
+
   // Reset callback registration whenever transport or mockup changes so registration
   // always matches the active selection.
   useEffect(() => {
@@ -245,11 +322,11 @@ export default function SmartScreen({ navigation }) {
   }, [selectedOption, selectedMockup]);
 
   useEffect(() => {
-    setDeviceCategories(getDeviceCategoriesByMockup(selectedMockup));
+    setDeviceCategories(getDeviceCategoriesByResidenceId(activeResidenceId));
     setActiveTab('All Devices');
     setSelectedDevice(null);
     setModalVisible(false);
-  }, [selectedMockup]);
+  }, [activeResidenceId]);
 
   useEffect(() => {
     const eventEmitter = new NativeEventEmitter(Akuvox);
@@ -261,10 +338,13 @@ export default function SmartScreen({ navigation }) {
       if (status === 2) {
         const transport = selectedOptionRef.current === 'LAN' ? 'lan' : 'wan';
         const currentMockup = selectedMockupRef.current;
+        const currentResidenceId = selectedResidenceIdRef.current;
         await AsyncStorage.setItem('registeredTransport', transport);
         await AsyncStorage.setItem('registeredMockup', currentMockup);
+        if (currentResidenceId) await AsyncStorage.setItem('registeredResidenceId', currentResidenceId);
         console.log('[SmartScreen] registeredTransport confirmed and saved:', transport);
         console.log('[SmartScreen] registeredMockup confirmed and saved:', currentMockup);
+        console.log('[SmartScreen] registeredResidenceId confirmed and saved:', currentResidenceId);
       }
     });
 
@@ -280,6 +360,7 @@ export default function SmartScreen({ navigation }) {
       try {
         const savedTransport = await AsyncStorage.getItem('registeredTransport');
         const savedMockup = await AsyncStorage.getItem('registeredMockup');
+        const savedResidenceId = await AsyncStorage.getItem('registeredResidenceId');
         if (mounted && (savedTransport === 'lan' || savedTransport === 'wan')) {
           setLastRegisteredTransport(savedTransport);
           console.log('[SmartScreen] Restored registeredTransport from storage:', savedTransport);
@@ -287,6 +368,11 @@ export default function SmartScreen({ navigation }) {
         if (mounted && (savedMockup === MOCKUP_OPTIONS.MOCKUP_1 || savedMockup === MOCKUP_OPTIONS.MOCKUP_2)) {
           setLastRegisteredMockup(savedMockup);
           console.log('[SmartScreen] Restored registeredMockup from storage:', savedMockup);
+        }
+        if (mounted && savedResidenceId) {
+          setSelectedResidenceId(savedResidenceId);
+          setSelectedMockup(resolveMockupByResidenceId(savedResidenceId));
+          console.log('[SmartScreen] Restored selectedResidenceId from storage:', savedResidenceId);
         }
       } catch (_) {}
 
@@ -348,6 +434,7 @@ export default function SmartScreen({ navigation }) {
               // registeredTransport once a switch is in progress.
               await AsyncStorage.removeItem('registeredTransport');
               await AsyncStorage.removeItem('registeredMockup');
+              await AsyncStorage.removeItem('registeredResidenceId');
               setSipRegistrationStatus(null);
               console.log('[SmartScreen] Fetching LAN SIP credentials...');
               const lanToken = await getActiveLanToken();
@@ -364,6 +451,7 @@ export default function SmartScreen({ navigation }) {
               if (status === 2) {
                 await AsyncStorage.setItem('registeredTransport', 'lan');
                 await AsyncStorage.setItem('registeredMockup', selectedMockup);
+                await AsyncStorage.setItem('registeredResidenceId', activeResidenceId);
               }
               console.log('[SmartScreen] SIP line status after LAN registration:', status);
             } catch (lanError) {
@@ -379,7 +467,8 @@ export default function SmartScreen({ navigation }) {
               const currentStatus = await Akuvox.getSipStatus();
               const storedTransport = await AsyncStorage.getItem('registeredTransport');
               const storedMockup = await AsyncStorage.getItem('registeredMockup');
-              if (currentStatus === 2 && storedTransport === 'wan' && storedMockup === selectedMockup) {
+              const storedResidenceId = await AsyncStorage.getItem('registeredResidenceId');
+              if (currentStatus === 2 && storedTransport === 'wan' && storedMockup === selectedMockup && storedResidenceId === activeResidenceId) {
                 console.log('[SmartScreen] SIP already registered (WAN), skipping re-registration.');
                 setLastRegisteredTransport('wan');
                 setLastRegisteredMockup(selectedMockup);
@@ -391,6 +480,7 @@ export default function SmartScreen({ navigation }) {
               // registeredTransport once a switch is in progress.
               await AsyncStorage.removeItem('registeredTransport');
               await AsyncStorage.removeItem('registeredMockup');
+              await AsyncStorage.removeItem('registeredResidenceId');
               setSipRegistrationStatus(null);
               console.log('[SmartScreen] Fetching WAN SIP credentials...');
               const wanToken = await getActiveWanToken();
@@ -410,6 +500,7 @@ export default function SmartScreen({ navigation }) {
               if (status === 2) {
                 await AsyncStorage.setItem('registeredTransport', 'wan');
                 await AsyncStorage.setItem('registeredMockup', selectedMockup);
+                await AsyncStorage.setItem('registeredResidenceId', activeResidenceId);
               }
               console.log('[SmartScreen] SIP line status after WAN registration:', status);
             } catch (wanError) {
@@ -420,7 +511,7 @@ export default function SmartScreen({ navigation }) {
     };
 
     register();
-  }, [sipInitialized, selectedOption, selectedMockup, lastRegisteredTransport, lastRegisteredMockup]);
+  }, [sipInitialized, selectedOption, selectedMockup, activeResidenceId, lastRegisteredTransport, lastRegisteredMockup]);
 
   useEffect(() => {
     if (!callbackRegistered) {
@@ -710,6 +801,7 @@ export default function SmartScreen({ navigation }) {
         abilityId: dev?.ability_id,
         strictDeviceId: strictStatusLookup,
         selectedMockup,
+        selectedResidenceId: activeResidenceId,
       });
 
       if (attempt < retries - 1) {
@@ -736,12 +828,19 @@ export default function SmartScreen({ navigation }) {
           abilityId: dev?.ability_id,
           strictDeviceId: strictStatusLookup,
           selectedMockup,
+          selectedResidenceId: activeResidenceId,
         });
       })();
     } else {
       setSelectedDeviceStatus(null);
     }
-  }, [modalVisible, selectedDevice, selectedOption, strictStatusLookup, selectedMockup]);
+  }, [modalVisible, selectedDevice, selectedOption, strictStatusLookup, selectedMockup, activeResidenceId]);
+
+  const handleFamilySelect = useCallback((family) => {
+    if (!family?.residence_id) return;
+    setSelectedResidenceId(family.residence_id);
+    setSelectedMockup(resolveMockupByResidenceId(family.residence_id));
+  }, []);
 
   const handleToggle = async (device, newControl) => {
     const mode = selectedOption.toLowerCase();
@@ -766,6 +865,7 @@ export default function SmartScreen({ navigation }) {
     markSelfControl(mode, dev.device_id, dev.ability_id);
     await controlDevice(dev.device_id, dev.ability_id, command, null, selectedOption, headers, {
       selectedMockup,
+      selectedResidenceId: activeResidenceId,
     });
     await refreshModalDeviceStatus(device, headers, { retries: 3, delayMs: 450 });
   };
@@ -785,6 +885,7 @@ export default function SmartScreen({ navigation }) {
     markSelfControl(mode, dev.device_id, dev.ability_id);
     await controlDevice(dev.device_id, dev.ability_id, command, attribute, selectedOption, headers, {
       selectedMockup,
+      selectedResidenceId: activeResidenceId,
     });
     await refreshModalDeviceStatus(device, headers, { retries: 3, delayMs: 450 });
   };
@@ -804,6 +905,7 @@ export default function SmartScreen({ navigation }) {
     markSelfControl(mode, dev.device_id, dev.ability_id);
     await controlDevice(dev.device_id, dev.ability_id, command, attribute, selectedOption, headers, {
       selectedMockup,
+      selectedResidenceId: activeResidenceId,
     });
     await refreshModalDeviceStatus(device, headers, { retries: 3, delayMs: 450 });
   };
@@ -821,6 +923,7 @@ export default function SmartScreen({ navigation }) {
     markSelfControl(mode, dev.device_id, dev.ability_id);
     await controlDevice(dev.device_id, dev.ability_id, command, attribute, selectedOption, headers, {
       selectedMockup,
+      selectedResidenceId: activeResidenceId,
     });
     await refreshModalDeviceStatus(device, headers, { retries: 3, delayMs: 450 });
   };
@@ -838,6 +941,7 @@ export default function SmartScreen({ navigation }) {
     const headers = await getHeaders();
     await controlDevice(dev.device_id, dev.ability_id, command, attribute, selectedOption, headers, {
       selectedMockup,
+      selectedResidenceId: activeResidenceId,
     });
     await refreshModalDeviceStatus(device, headers, { retries: 3, delayMs: 450 });
   };
@@ -857,6 +961,7 @@ export default function SmartScreen({ navigation }) {
     const headers = await getHeaders();
     await controlDevice(dev.device_id, dev.ability_id, command, attribute, selectedOption, headers, {
       selectedMockup,
+      selectedResidenceId: activeResidenceId,
     });
     await refreshModalDeviceStatus(device, headers, { retries: 3, delayMs: 450 });
   };
@@ -876,13 +981,17 @@ export default function SmartScreen({ navigation }) {
   return (
     <Screen>
       <Animated.View style={[styles.headerContainer, { transform: [{ translateY: headerTranslateY }] }]}>
-        <Header onUserPress={() => navigation.navigate(routes.ACCOUNTDETAILS, { selectedOption, selectedMockup })} />
+        <Header onUserPress={() => navigation.navigate(routes.ACCOUNTDETAILS, { selectedOption, selectedMockup, selectedResidenceId: activeResidenceId })} />
         {/* lanHeaders prop removed from StatsSection if not used there; keep if required */}
         <StatsSection
           selectedOption={selectedOption}
           setSelectedOption={setSelectedOption}
           selectedMockup={selectedMockup}
           setSelectedMockup={setSelectedMockup}
+          selectedResidenceId={activeResidenceId}
+          familyOptions={familyOptions}
+          familyListLoading={familyListLoading}
+          onSelectFamily={handleFamilySelect}
         />
       </Animated.View>
       <Animated.View style={[styles.tabsContainer, { transform: [{ translateY: tabsTranslateY }] }]}>

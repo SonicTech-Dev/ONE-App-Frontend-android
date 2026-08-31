@@ -1,26 +1,51 @@
-import React from 'react';
+import React, { useState } from 'react';
 import styled from 'styled-components/native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
-import { TouchableOpacity, View, Text } from 'react-native';
+import { ActivityIndicator, Modal, ScrollView, TouchableOpacity, View, Text } from 'react-native';
 import OnlineStatus from './OnlineStatus';
 import { useNavigation } from '@react-navigation/native';
 import styles from './SmartScreenSections/SmartScreen.styles';
 import { MOCKUP_OPTIONS, getIntercomConfigByMockup } from './SmartScreenSections/SmartScreen.constants';
 
-const StatsSection = ({ selectedOption, setSelectedOption, selectedMockup, setSelectedMockup, lanHeaders }) => {
+const StatsSection = ({
+  selectedOption,
+  setSelectedOption,
+  selectedMockup,
+  setSelectedMockup,
+  selectedResidenceId,
+  familyOptions = [],
+  familyListLoading = false,
+  onSelectFamily,
+  lanHeaders,
+}) => {
   // Legacy: parent may have headers, but OnlineStatus now generates fresh ones per request.
   const lanAuthToken = lanHeaders?.Authorization ?? lanHeaders?.token ?? null;
   const navigation = useNavigation();
   const intercomConfig = getIntercomConfigByMockup(selectedMockup);
+  const [familyDropdownVisible, setFamilyDropdownVisible] = useState(false);
+  const selectedFamily = familyOptions.find((family) => family?.residence_id === selectedResidenceId) || familyOptions[0];
+  const selectedFamilyName = selectedFamily?.family_name || 'Select family';
+
+  const handleFamilyPress = (family) => {
+    setFamilyDropdownVisible(false);
+    if (onSelectFamily) {
+      onSelectFamily(family);
+    } else if (family?.residence_id?.includes('45844047053')) {
+      setSelectedMockup(MOCKUP_OPTIONS.MOCKUP_1);
+    } else {
+      setSelectedMockup(MOCKUP_OPTIONS.MOCKUP_2);
+    }
+  };
+
   return (
     <>
       <View style={[styles.actionDockContainer, { marginTop: 8 }]}>
         {/* Contacts */}
         <TouchableOpacity 
           style={styles.actionButtonWrapper} 
-          onPress={() => navigation.navigate('SdkTest', { selectedMockup, selectedOption })}
+          onPress={() => navigation.navigate('SdkTest', { selectedMockup, selectedOption, selectedResidenceId })}
           activeOpacity={0.7}
         >
           <View style={[styles.actionButtonIcon, { backgroundColor: '#f2ebff' }]}>
@@ -32,7 +57,7 @@ const StatsSection = ({ selectedOption, setSelectedOption, selectedMockup, setSe
         {/* Smart Lock */}
         <TouchableOpacity 
           style={styles.actionButtonWrapper} 
-          onPress={() => navigation.navigate('SmartLockScreen', { selectedOption, selectedMockup })}
+          onPress={() => navigation.navigate('SmartLockScreen', { selectedOption, selectedMockup, selectedResidenceId })}
           activeOpacity={0.7}
         >
           <View style={[styles.actionButtonIcon, { backgroundColor: '#efe6ff' }]}>
@@ -47,6 +72,7 @@ const StatsSection = ({ selectedOption, setSelectedOption, selectedMockup, setSe
           onPress={() => navigation.navigate('IntercomScreen', {
             selectedOption,
             selectedMockup,
+            selectedResidenceId,
             deviceId: intercomConfig.deviceId,
             lanRtspUrl: intercomConfig.lanRtspUrl,
             wanRtspUrl: intercomConfig.wanRtspUrl,
@@ -75,7 +101,7 @@ const StatsSection = ({ selectedOption, setSelectedOption, selectedMockup, setSe
         {/* Scenes */}
         <TouchableOpacity
           style={styles.actionButtonWrapper}
-          onPress={() => navigation.navigate('ScenesScreen', { selectedOption, selectedMockup })}
+          onPress={() => navigation.navigate('ScenesScreen', { selectedOption, selectedMockup, selectedResidenceId })}
           activeOpacity={0.7}
         >
           <View style={[styles.actionButtonIcon, { backgroundColor: '#efe6ff' }]}>
@@ -98,27 +124,66 @@ const StatsSection = ({ selectedOption, setSelectedOption, selectedMockup, setSe
           </RadioOption>
         </RadioContainer>
         <NavigateButton
-          onPress={() => navigation.navigate('DeviceStatuses', { selectedOption, selectedMockup, lanAuthToken })}
+          onPress={() => navigation.navigate('DeviceStatuses', { selectedOption, selectedMockup, selectedResidenceId, lanAuthToken })}
         >
           <NavigateText>All Devices Status</NavigateText>
         </NavigateButton>
-        <OnlineStatus selectedOption={selectedOption} selectedMockup={selectedMockup} />
+        <OnlineStatus selectedOption={selectedOption} selectedMockup={selectedMockup} residenceId={selectedResidenceId} />
       </RadioRow>
 
       <MockupRow>
-        <MockupLabel>Device Set</MockupLabel>
-        <RadioContainer>
-          <RadioOption onPress={() => setSelectedMockup(MOCKUP_OPTIONS.MOCKUP_1)}>
-            <RadioCircle selected={selectedMockup === MOCKUP_OPTIONS.MOCKUP_1} />
-            <RadioText>Mockup 1</RadioText>
-          </RadioOption>
-
-          <RadioOption onPress={() => setSelectedMockup(MOCKUP_OPTIONS.MOCKUP_2)}>
-            <RadioCircle selected={selectedMockup === MOCKUP_OPTIONS.MOCKUP_2} />
-            <RadioText>Mockup 2</RadioText>
-          </RadioOption>
-        </RadioContainer>
+        <MockupLabel>Family</MockupLabel>
+        <FamilyDropdownButton onPress={() => setFamilyDropdownVisible(true)} activeOpacity={0.8}>
+          <FamilyDropdownText numberOfLines={1}>{selectedFamilyName}</FamilyDropdownText>
+          {familyListLoading ? (
+            <ActivityIndicator size="small" color="#6f4bd8" />
+          ) : (
+            <MaterialCommunityIcons name="chevron-down" size={20} color="#6f4bd8" />
+          )}
+        </FamilyDropdownButton>
       </MockupRow>
+
+      <Modal
+        visible={familyDropdownVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setFamilyDropdownVisible(false)}
+      >
+        <DropdownBackdrop>
+          <DropdownCard>
+            <DropdownHeader>
+              <DropdownTitle>Select family</DropdownTitle>
+              <TouchableOpacity onPress={() => setFamilyDropdownVisible(false)} accessibilityLabel="Close family selector">
+                <MaterialCommunityIcons name="close" size={22} color="#6f4bd8" />
+              </TouchableOpacity>
+            </DropdownHeader>
+            <ScrollView>
+              {familyOptions.map((family) => {
+                const isSelected = family?.residence_id === selectedResidenceId;
+                return (
+                  <FamilyOption
+                    key={family?.residence_id || family?.family_name}
+                    onPress={() => handleFamilyPress(family)}
+                    selected={isSelected}
+                    activeOpacity={0.75}
+                  >
+                    <FamilyOptionIcon selected={isSelected}>
+                      <MaterialCommunityIcons name="home-account" size={20} color={isSelected ? '#ffffff' : '#6f4bd8'} />
+                    </FamilyOptionIcon>
+                    <FamilyOptionBody>
+                      <FamilyOptionName numberOfLines={1}>{family?.family_name || 'Unnamed family'}</FamilyOptionName>
+                      <FamilyOptionStatus>
+                        {family?.online ? 'Online' : 'Offline'} · {family?.installed ? 'Installed' : 'Not installed'}
+                      </FamilyOptionStatus>
+                    </FamilyOptionBody>
+                    {isSelected ? <MaterialCommunityIcons name="check-circle" size={20} color="#6f4bd8" /> : null}
+                  </FamilyOption>
+                );
+              })}
+            </ScrollView>
+          </DropdownCard>
+        </DropdownBackdrop>
+      </Modal>
     </>
   );
 };
@@ -222,4 +287,91 @@ const MockupLabel = styled.Text`
   font-size: 12px;
   color: #6b54a8;
   font-weight: 700;
+`;
+
+const FamilyDropdownButton = styled(TouchableOpacity)`
+  flex: 1;
+  margin-left: 12px;
+  min-height: 42px;
+  border-radius: 14px;
+  border-width: 1px;
+  border-color: #e7dcff;
+  background-color: #ffffff;
+  padding: 0 12px;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+`;
+
+const FamilyDropdownText = styled.Text`
+  flex: 1;
+  color: #4f3a8a;
+  font-size: 13px;
+  font-weight: 800;
+  margin-right: 8px;
+`;
+
+const DropdownBackdrop = styled.View`
+  flex: 1;
+  background-color: rgba(30, 18, 56, 0.42);
+  justify-content: center;
+  padding: 22px;
+`;
+
+const DropdownCard = styled.View`
+  background-color: #ffffff;
+  border-radius: 20px;
+  padding: 16px;
+  max-height: 70%;
+`;
+
+const DropdownHeader = styled.View`
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+`;
+
+const DropdownTitle = styled.Text`
+  color: #34225f;
+  font-size: 18px;
+  font-weight: 800;
+`;
+
+const FamilyOption = styled(TouchableOpacity)`
+  flex-direction: row;
+  align-items: center;
+  border-radius: 14px;
+  padding: 12px;
+  margin-bottom: 10px;
+  background-color: ${(props) => (props.selected ? '#f2ebff' : '#fbf9ff')};
+  border-width: 1px;
+  border-color: ${(props) => (props.selected ? '#d9c8ff' : '#eee7fb')};
+`;
+
+const FamilyOptionIcon = styled.View`
+  width: 38px;
+  height: 38px;
+  border-radius: 19px;
+  align-items: center;
+  justify-content: center;
+  margin-right: 12px;
+  background-color: ${(props) => (props.selected ? '#6f4bd8' : '#efe6ff')};
+`;
+
+const FamilyOptionBody = styled.View`
+  flex: 1;
+`;
+
+const FamilyOptionName = styled.Text`
+  color: #34225f;
+  font-size: 14px;
+  font-weight: 800;
+`;
+
+const FamilyOptionStatus = styled.Text`
+  color: #8975a8;
+  font-size: 12px;
+  font-weight: 600;
+  margin-top: 3px;
 `;

@@ -7,6 +7,10 @@ function resolveResidenceId(selectedMockup = MOCKUP_OPTIONS.MOCKUP_2) {
     : 'rabd2c6d2aecc4ce3be11e25b4ecd3c82';
 }
 
+function resolveActiveResidenceId(selectedMockup, selectedResidenceId) {
+  return selectedResidenceId || resolveResidenceId(selectedMockup);
+}
+
 export const controlDevice = async (
   deviceId,
   abilityId,
@@ -19,8 +23,9 @@ export const controlDevice = async (
   const {
     suppressErrorAlert = false,
     selectedMockup = MOCKUP_OPTIONS.MOCKUP_2,
+    selectedResidenceId = '',
   } = options;
-  const activeResidenceId = resolveResidenceId(selectedMockup);
+  const activeResidenceId = resolveActiveResidenceId(selectedMockup, selectedResidenceId);
 
   // Normalize selectedOption
   const isLAN = selectedOption && selectedOption.toLowerCase() === 'lan';
@@ -132,12 +137,13 @@ export const deviceStatus = async (
     abilityId = '',
     strictDeviceId = false,
     selectedMockup = MOCKUP_OPTIONS.MOCKUP_2,
+    selectedResidenceId = '',
   } = options;
   const isHyPanel = String(deviceTitle || '').toLowerCase().includes('hypanel');
   const isDoorWindowSensor = String(deviceTitle || '').toLowerCase().includes('door/window sensor');
   const isLockDevice = String(deviceTitle || '').toLowerCase().includes('lock') || String(deviceTitle || '').toLowerCase().includes('f2');
   const shouldUseListFirst = !strictDeviceId && (isHyPanel || isDoorWindowSensor || isLockDevice);
-  const activeResidenceId = resolveResidenceId(selectedMockup);
+  const activeResidenceId = resolveActiveResidenceId(selectedMockup, selectedResidenceId);
 
   const setOfflineStatus = () => {
     setSelectedDeviceStatus({
