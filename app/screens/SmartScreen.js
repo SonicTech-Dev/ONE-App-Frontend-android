@@ -169,7 +169,13 @@ async function requestPermissionsIfNeeded() {
   if (Platform.OS === 'android') {
     const camera = PermissionsAndroid.PERMISSIONS.CAMERA;
     const audio = PermissionsAndroid.PERMISSIONS.RECORD_AUDIO;
-    const granted = await PermissionsAndroid.requestMultiple([camera, audio]);
+    const permissions = [camera, audio];
+    // Android 13+ needs a runtime grant for the incoming-call notification.
+    // Its result does not gate the call feature — ringing still works in-app.
+    if (Number(Platform.Version) >= 33) {
+      permissions.push(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS);
+    }
+    const granted = await PermissionsAndroid.requestMultiple(permissions);
     return (
       granted[camera] === PermissionsAndroid.RESULTS.GRANTED &&
       granted[audio] === PermissionsAndroid.RESULTS.GRANTED

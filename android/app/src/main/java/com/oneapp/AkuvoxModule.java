@@ -40,6 +40,19 @@ public class AkuvoxModule extends ReactContextBaseJavaModule {
     // so JS can still cancel a ringing call.
     private volatile int currentCallId = -1;
 
+    // Pending incoming call payload, so JS launched cold (e.g. via the
+    // full-screen call notification) can recover the call and show the modal.
+    private volatile int pendingIncomingCallId = -1;
+    private volatile String pendingIncomingRemoteUserName = null;
+    private volatile String pendingIncomingRemoteDisplayName = null;
+    private volatile int pendingIncomingCallVideoMode = 1;
+
+    private void clearPendingIncomingCall() {
+        pendingIncomingCallId = -1;
+        pendingIncomingRemoteUserName = null;
+        pendingIncomingRemoteDisplayName = null;
+    }
+
     public AkuvoxModule(ReactApplicationContext reactContext) {
         super(reactContext);
         this.reactContext = reactContext;
@@ -171,6 +184,12 @@ public class AkuvoxModule extends ReactContextBaseJavaModule {
                 @Override
                 public int sipMessageFinishedCall(int callId, String reason) {
                     Log.d("SIP", "Call finished: ID=" + callId + ", reason=" + reason);
+                    // Stop ringing/vibration and dismiss the call notification.
+                    CallAlertHelper.stop(reactContext);
+                    CallNotificationHelper.cancelIncomingCall(reactContext);
+                    if (callId == pendingIncomingCallId || pendingIncomingCallId != -1) {
+                        clearPendingIncomingCall();
+                    }
                     if (callId == activeCallId) activeCallId = -1;
                     if (callId == currentCallId) currentCallId = -1;
                     MediaManager.getInstance(activityOrApp()).stopLocalVideo(callId);
@@ -186,6 +205,27 @@ public class AkuvoxModule extends ReactContextBaseJavaModule {
                         + ", remoteUserName=" + callData.remoteUserName
                         + ", remoteDisplayName=" + callData.remoteDisplayName
                         + ", callVideoMode=" + callData.callVideoMode);
+
+                    // 1) Remember the call so a cold-started JS runtime can recover it.
+                    pendingIncomingCallId = callData.callId;
+                    pendingIncomingRemoteUserName = callData.remoteUserName;
+                    pendingIncomingRemoteDisplayName = callData.remoteDisplayName;
+                    pendingIncomingCallVideoMode = callData.callVideoMode;
+
+                    // 2) Ring + vibrate + wake the screen (works while app is backgrounded).
+                    CallAlertHelper.start(reactContext);
+
+                    // 3) Heads-up / full-screen notification for background & lockscreen.
+                    String caller = callData.remoteDisplayName != null && !callData.remoteDisplayName.isEmpty()
+                        ? callData.remoteDisplayName : callData.remoteUserName;
+                    CallNotificationHelper.showIncomingCall(reactContext, caller);
+
+                    // 4) If an activity exists, show it over the lockscreen.
+                    android.app.Activity activity = getCurrentActivity();
+                    if (activity != null) {
+                        MainActivity.applyIncomingCallWindowFlags(activity);
+                    }
+
                     WritableMap params = Arguments.createMap();
                     params.putInt("callId", callData.callId);
                     params.putString("remoteUserName", callData.remoteUserName);
@@ -199,6 +239,12 @@ public class AkuvoxModule extends ReactContextBaseJavaModule {
                     int callId = callData.callId;
                     activeCallId = callId;
                     currentCallId = callId;
+                    // Ringing stops as soon as the call connects.
+                    CallAlertHelper.stop(reactContext);
+                    CallNotificationHelper.cancelIncomingCall(reactContext);
+                    if (callId == pendingIncomingCallId) {
+                        clearPendingIncomingCall();
+                    }
                     // Call startLocalVideo synchronously here (on the SIP callback thread)
                     // BEFORE emitting onCallEstablished to JS. This ensures the camera
                     // pipeline is started before any JS/view rendering touches getLocalVideoView().
@@ -262,6 +308,23 @@ public class AkuvoxModule extends ReactContextBaseJavaModule {
     }
 
     @ReactMethod
+    public void getPendingIncomingCall(Promise promise) {
+        // Returns the incoming call that is currently ringing, or null. Lets JS
+        // recover the call UI when the app was cold-started by the notification
+        // (the onIncomingCall event fires before the JS runtime exists in that case).
+        if (pendingIncomingCallId == -1) {
+            promise.resolve(null);
+            return;
+        }
+        WritableMap params = Arguments.createMap();
+        params.putInt("callId", pendingIncomingCallId);
+        params.putString("remoteUserName", pendingIncomingRemoteUserName);
+        params.putString("remoteDisplayName", pendingIncomingRemoteDisplayName);
+        params.putInt("callVideoMode", pendingIncomingCallVideoMode);
+        promise.resolve(params);
+    }
+
+    @ReactMethod
     public void registerSip(String ciphertext, String displayName, Promise promise) {
         try {
             // Reset stale call state from any previous session.
@@ -278,6 +341,8 @@ public class AkuvoxModule extends ReactContextBaseJavaModule {
             int result = MediaManager.getInstance(activityOrApp()).setSipAccount(ciphertext, displayName);
             MediaManager.getInstance(activityOrApp()).setSipBackendOnline(true);
             if (result == 0) {
+                // Keep the SIP socket alive in the background for incoming calls.
+                SipForegroundService.start(reactContext);
                 promise.resolve("SIP account registered successfully.");
                 Log.d("SIP", "App registered with account: " + displayName + " / " + ciphertext);
             } else {
@@ -305,6 +370,8 @@ public class AkuvoxModule extends ReactContextBaseJavaModule {
             int result = MediaManager.getInstance(activityOrApp()).setSipAccount(ciphertext, displayName);
             MediaManager.getInstance(activityOrApp()).setSipBackendOnline(true);
             if (result == 0) {
+                // Keep the SIP socket alive in the background for incoming calls.
+                SipForegroundService.start(reactContext);
                 promise.resolve("SIP account registered successfully.");
                 Log.d("SIP", "App registered with account: " + displayName + " / " + ciphertext);
             } else {
@@ -355,12 +422,45 @@ public class AkuvoxModule extends ReactContextBaseJavaModule {
     }
 
     @ReactMethod
+    public void rejectCall(int callId) {
+        // The Akuvox SDK's hungupCall only acts on established calls — for an
+        // incoming RINGING call it is a no-op and no sipMessageFinishedCall ever
+        // fires, which previously left the ringtone looping forever. So stop the
+        // alert deterministically here, then still attempt hungupCall so the SDK
+        // can CANCEL the dialog if it supports it.
+        Log.d("SIP", "Rejecting incoming call: callId=" + callId);
+        CallAlertHelper.stop(reactContext);
+        CallNotificationHelper.cancelIncomingCall(reactContext);
+        if (pendingIncomingCallId == callId) {
+            clearPendingIncomingCall();
+        }
+        try {
+            int res = MediaManager.getInstance(activityOrApp()).hungupCall(callId);
+            Log.d("SIP", "hungupCall (reject path) returned: " + res);
+        } catch (Exception e) {
+            Log.w("SIP", "hungupCall during reject failed: " + e.getMessage());
+        }
+    }
+
+    @ReactMethod
     public void answerCall(int callId) {
+        // Stop ringing immediately on answer instead of waiting for onCallEstablished.
+        CallAlertHelper.stop(reactContext);
+        CallNotificationHelper.cancelIncomingCall(reactContext);
+        if (pendingIncomingCallId == callId) {
+            clearPendingIncomingCall();
+        }
         MediaManager.getInstance(activityOrApp()).answerCall(callId, 1);
     }
 
     @ReactMethod
     public void answerCallWithMode(int callId, int callVideoMode) {
+        // Stop ringing immediately on answer instead of waiting for onCallEstablished.
+        CallAlertHelper.stop(reactContext);
+        CallNotificationHelper.cancelIncomingCall(reactContext);
+        if (pendingIncomingCallId == callId) {
+            clearPendingIncomingCall();
+        }
         MediaManager.getInstance(activityOrApp()).answerCall(callId, callVideoMode);
     }
 

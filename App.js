@@ -48,9 +48,30 @@ export default function App() {
     };
   }, []);
 
+  // Recover an incoming call that arrived while the JS runtime wasn't running
+  // (e.g. the app was cold-started by tapping the full-screen call notification).
+  useEffect(() => {
+    if (typeof Akuvox.getPendingIncomingCall !== 'function') return;
+    Akuvox.getPendingIncomingCall()
+      .then((pending) => {
+        if (pending && typeof pending.callId === 'number' && pending.callId > 0) {
+          console.log('📞 Pending incoming call recovered:', pending);
+          setIncomingCallState(pending);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   const handleReject = () => {
     if (incomingCallState) {
-      Akuvox.hangupCall(incomingCallState.callId);
+      // rejectCall handles incoming ringing calls: hungupCall is a no-op for
+      // them in the Akuvox SDK, so the native layer stops the ringtone,
+      // vibration and call notification explicitly.
+      if (typeof Akuvox.rejectCall === 'function') {
+        Akuvox.rejectCall(incomingCallState.callId);
+      } else {
+        Akuvox.hangupCall(incomingCallState.callId);
+      }
       setIncomingCallState(null);
     }
   };
