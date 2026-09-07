@@ -88,7 +88,7 @@ export default function OnlineStatus({
       try {
         // LAN path
         console.log('[OnlineStatus] selectedOption: LAN -> calling LAN URL', lanUrl);
-        const activeToken = await getActiveLanToken(true);
+        const activeToken = await getActiveLanToken();
 
         const headers = {
           'Content-Type': 'application/json',

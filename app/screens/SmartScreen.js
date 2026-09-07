@@ -799,8 +799,11 @@ export default function SmartScreen({ navigation }) {
     if (status === 'success') setCallbackRegistered(true);
     if (status === 'error') {
       console.log(`[SmartScreen] ${selectedOption} callback registration error:`, res?.message || 'Failed to register callback.');
+      if (res?.status === 401 || res?.status === 403) {
+        handleAuthExpired();
+      }
     }
-  }, [selectedOption]);
+  }, [handleAuthExpired, selectedOption]);
 
   const headerTranslateY = scrollY.interpolate({
     inputRange: [0, HEADER_HEIGHT],

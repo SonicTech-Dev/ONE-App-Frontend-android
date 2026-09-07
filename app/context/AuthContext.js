@@ -1,10 +1,11 @@
-import React, { createContext, useState, useEffect, useContext } from 'react';
+import React, { createContext, useState, useEffect, useContext, useCallback, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const AuthContext = createContext();
 
 export const BACKEND_URL = "https://one-development.soniciot.com";
 export const LAN_BASE_URL = "http://192.168.2.115/api/v1.0";
+const ACCESS_TOKEN_EXPIRES_IN_SECONDS = 3600;
 
 // General Wan Account (Strictly for Registration)
 const GENERAL_USERNAME = "fayis@sonictech.ae";
@@ -34,6 +35,15 @@ export function AuthProvider({ children }) {
   const [authRole, setAuthRole] = useState(null);
   const [networkMode, setNetworkMode] = useState('WAN');
   const [isInitializing, setIsInitializing] = useState(true);
+  const lanTokenRef = useRef(null);
+  const wanTokenRef = useRef(null);
+  const credentialsRef = useRef(null);
+  const lanTokenRequestRef = useRef(null);
+  const wanTokenRequestRef = useRef(null);
+
+  lanTokenRef.current = lanToken;
+  wanTokenRef.current = wanToken;
+  credentialsRef.current = userCredentials;
 
   useEffect(() => {
     const checkPersistedAuth = async () => {
@@ -45,11 +55,10 @@ export function AuthProvider({ children }) {
         const activeResidenceId = await AsyncStorage.getItem('activeResidenceId');
         const activeAuthRole = await AsyncStorage.getItem('activeAuthRole');
 
-        // Do not restore old access tokens across launches.
-        // They can be expired and cause immediate 401/unauthorized errors on startup.
-        await AsyncStorage.multiRemove(['lanToken', 'wanToken']);
-        setLanToken(null);
-        setWanToken(null);
+        const storedLanToken = await AsyncStorage.getItem('lanToken');
+        const storedWanToken = await AsyncStorage.getItem('wanToken');
+        setLanToken(storedLanToken);
+        setWanToken(storedWanToken);
         setNetworkMode(storedMode);
         
         if (activeEmail && activePassword) {
@@ -66,13 +75,13 @@ export function AuthProvider({ children }) {
     checkPersistedAuth();
   }, []);
 
-  const fetchWanToken = async (email, password) => {
+  const fetchWanToken = useCallback(async (email, password) => {
     const AUTH_URL = "https://api.ecloud.akubela.com/api/v1.0/invoke/open-ability/method/oauth2/token";
     const body = "username=" + encodeURIComponent(email) +
       "&password=" + encodeURIComponent(password) +
       "&grant_type=password&client_id=" + encodeURIComponent(CLIENT_ID) +
       "&client_secret=" + encodeURIComponent(CLIENT_SECRET) +
-      "&scope=user&expires_in=100000";
+      `&scope=user&expires_in=${ACCESS_TOKEN_EXPIRES_IN_SECONDS}`;
 
     let response;
     try {
@@ -95,18 +104,18 @@ export function AuthProvider({ children }) {
     }
 
     return data.result.access_token;
-  };
+  }, []);
 
-  const verifyOnlineAccount = async (email, password) => {
+  const verifyOnlineAccount = useCallback(async (email, password) => {
     await fetchWanToken(email, password);
     return true;
-  };
+  }, [fetchWanToken]);
 
-  const fetchLanToken = async (email, password) => {
+  const fetchLanToken = useCallback(async (email, password) => {
     const AUTH_URL = LAN_BASE_URL + "/auth";
     const body = "username=" + encodeURIComponent(email) +
       "&password=" + encodeURIComponent(password) +
-      "&grant_type=password&expires_in=100000";
+      `&grant_type=password&expires_in=${ACCESS_TOKEN_EXPIRES_IN_SECONDS}`;
 
     let response;
     try {
@@ -130,7 +139,7 @@ export function AuthProvider({ children }) {
     }
 
     return data.result.access_token;
-  };
+  }, []);
 
   const persistSession = async (email, password, mode, activeResidenceId = null, activeAuthRole = null) => {
     setUserCredentials({ email, password });
@@ -173,23 +182,35 @@ export function AuthProvider({ children }) {
   };
 
   /** Dynamically grabs from cache instantly, or fetches from Network exactly 1 time! */
-  const getActiveLanToken = async (forceRefresh = false) => {
-    if (lanToken && !forceRefresh) return lanToken;
-    if (!userCredentials) throw new Error("No offline credentials available.");
-    const token = await fetchLanToken(userCredentials.email, userCredentials.password);
-    setLanToken(token);
-    await AsyncStorage.setItem('lanToken', token);
-    return token;
-  };
+  const getActiveLanToken = useCallback(async () => {
+    if (lanTokenRef.current) return lanTokenRef.current;
+    if (!credentialsRef.current) throw new Error("No offline credentials available.");
+    if (!lanTokenRequestRef.current) {
+      lanTokenRequestRef.current = fetchLanToken(credentialsRef.current.email, credentialsRef.current.password)
+        .then(async (token) => {
+          setLanToken(token);
+          await AsyncStorage.setItem('lanToken', token);
+          return token;
+        })
+        .finally(() => { lanTokenRequestRef.current = null; });
+    }
+    return lanTokenRequestRef.current;
+  }, [fetchLanToken]);
 
-  const getActiveWanToken = async (forceRefresh = false) => {
-    if (wanToken && !forceRefresh) return wanToken;
-    if (!userCredentials) throw new Error("No offline credentials available.");
-    const token = await fetchWanToken(userCredentials.email, userCredentials.password);
-    setWanToken(token);
-    await AsyncStorage.setItem('wanToken', token);
-    return token;
-  };
+  const getActiveWanToken = useCallback(async () => {
+    if (wanTokenRef.current) return wanTokenRef.current;
+    if (!credentialsRef.current) throw new Error("No offline credentials available.");
+    if (!wanTokenRequestRef.current) {
+      wanTokenRequestRef.current = fetchWanToken(credentialsRef.current.email, credentialsRef.current.password)
+        .then(async (token) => {
+          setWanToken(token);
+          await AsyncStorage.setItem('wanToken', token);
+          return token;
+        })
+        .finally(() => { wanTokenRequestRef.current = null; });
+    }
+    return wanTokenRequestRef.current;
+  }, [fetchWanToken]);
 
   const loginWan = async (email, password) => {
     let response;

@@ -12,18 +12,28 @@ import {
   Platform,
   NativeModules,
   NativeEventEmitter,
+  ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { MOCKUP_OPTIONS } from '../components/Smart/SmartScreenSections/SmartScreen.constants';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
+import {
+  MOCKUP_OPTIONS,
+  SMARTSCREEN_RESIDENCE_IDS,
+} from '../components/Smart/SmartScreenSections/SmartScreen.constants';
+import { useAuth } from '../context/AuthContext';
 const { Akuvox } = NativeModules;
 
 /**
- * Contacts now reflect SIP registration initiated in SmartScreen.
+ * Contacts are now loaded dynamically via get_contact_list (LAN hub or WAN cloud).
  * We read 'registeredTransport' from AsyncStorage to know whether LAN/WAN was chosen.
  * Buttons for init/register are removed — registration happens automatically in SmartScreen.
  */
 
+/*
+ * Legacy static contact list — kept for reference only (do not delete yet).
+ * Superseded by the dynamic get_contact_list fetching below.
 const API_RESULT_MOCKUP_1 = {
   family_name: 'One-Dev Mockup-Flat',
   sip_group: '1191000500',
@@ -95,6 +105,92 @@ const getContacts = (apiResult) => {
   });
   return contacts;
 };
+*/
+
+// ------- Dynamic contact list via get_contact_list (LAN hub / WAN cloud) -------
+const CONTACT_REQUEST_ID = 'c45e846ca23ab42c9ae469d988ae32a96';
+const LAN_CONTACT_LIST_URL = 'http://192.168.2.115/api/v1.0/contact';
+const WAN_CONTACT_LIST_URL = 'https://one-development.soniciot.com/contact_list/';
+
+// WAN response shape:
+//   result: { family_name, sip_group, devices[], accounts[], akuvox_devices[], ciphertext }
+const mapWanContactList = (result) => {
+  if (!result || typeof result !== 'object') return [];
+  const sipGroup = result.sip_group;
+  const contacts = [];
+
+  (result.devices || []).forEach((device) => {
+    const name = device.device_name || 'Device';
+    contacts.push({
+      id: device.device_id,
+      name,
+      sip_wan: device.sip,
+      sip_group: sipGroup,
+      type: isHyPanelName(name) ? 'HyPanel' : 'Device',
+    });
+  });
+
+  (result.accounts || []).forEach((account) => {
+    const fullName = `${account.first_name || ''} ${account.last_name || ''}`.trim();
+    contacts.push({
+      id: account.account_id,
+      name: fullName || account.account_name || account.email || 'Account',
+      sip_wan: account.sip,
+      main_sip: account.main_sip,
+      email: account.email,
+      sip_group: sipGroup,
+      type: 'Account',
+    });
+  });
+
+  (result.akuvox_devices || []).forEach((dev, idx) => {
+    contacts.push({
+      id: dev.mac || `akuvox_${idx}`,
+      name: dev.device_name || 'Intercom',
+      sip_wan: dev.sip,
+      sip_group: sipGroup,
+      type: 'Akuvox Device',
+    });
+  });
+
+  return contacts;
+};
+
+// LAN response shape:
+//   result: [{ id, name, sip, sip_local, ip, type, status, first_name, last_name }]
+// `sip` is the global (cloud) number, `sip_local` is the LAN extension.
+const mapLanContactList = (list) => {
+  if (!Array.isArray(list)) return [];
+  return list.map((item) => {
+    const fullName = `${item.first_name || ''} ${item.last_name || ''}`.trim();
+    const name = item.name || fullName || 'Unknown';
+    const isApp = item.type === 'APP';
+    return {
+      id: item.id,
+      name,
+      sip_wan: item.sip,
+      sip_lan: item.sip_local,
+      ip: item.ip,
+      online: item.status === 1,
+      type: isApp ? 'Account' : item.type === 'SL50' ? 'Smart Lock' : isHyPanelName(name) ? 'HyPanel' : 'Device',
+    };
+  });
+};
+
+// HyPanel displays are detected by name (HyPanel Supreme, Hypanel Lux, Hypanel KeyPlus…).
+function isHyPanelName(name) {
+  return /hypanel/i.test(String(name || ''));
+}
+
+// Per-type avatar icon + colours for the list rows.
+const CONTACT_TYPE_META = {
+  HyPanel: { icon: 'tablet-dashboard', color: '#0891b2', bg: '#e0f5fa' },
+  Device: { icon: 'monitor-smartphone', color: '#6f4bd8', bg: '#efe9ff' },
+  Account: { icon: 'account', color: '#0e9f6e', bg: '#e3f6ee' },
+  'Akuvox Device': { icon: 'doorbell-video', color: '#d97706', bg: '#fef3e2' },
+  'Smart Lock': { icon: 'lock-smart', color: '#2563eb', bg: '#e6effe' },
+};
+const DEFAULT_TYPE_META = { icon: 'phone-outline', color: '#6f4bd8', bg: '#efe9ff' };
 
 const formatMockupLabel = (mockup) => {
   if (mockup === MOCKUP_OPTIONS.MOCKUP_1) return 'Mockup 1';
@@ -116,6 +212,7 @@ async function requestPermissionsIfNeeded() {
 }
 
 export default function SdkContactScreen({ navigation, route }) {
+  const { getActiveLanToken, getActiveWanToken } = useAuth();
   const [sipStatus, setSipStatus] = useState(null);
   const [selectedContact, setSelectedContact] = useState(null);
   const [modalVisible, setModalVisible] = useState(false);
@@ -127,10 +224,90 @@ export default function SdkContactScreen({ navigation, route }) {
     : MOCKUP_OPTIONS.MOCKUP_2;
   const selectedOption = String(route?.params?.selectedOption || '').toUpperCase() === 'LAN' ? 'LAN' : 'WAN';
   const selectedTransport = selectedOption.toLowerCase();
-  const apiResult = selectedMockup === MOCKUP_OPTIONS.MOCKUP_1
-    ? API_RESULT_MOCKUP_1
-    : API_RESULT_MOCKUP_2;
-  const contacts = getContacts(apiResult);
+
+  // ------- Dynamic contact list (get_contact_list for the active transport) -------
+  const [contacts, setContacts] = useState([]);
+  const [contactsLoading, setContactsLoading] = useState(true);
+  const [contactsError, setContactsError] = useState(null);
+  const [contactsRefreshing, setContactsRefreshing] = useState(false);
+
+  const fetchContacts = React.useCallback(async ({ isRefresh = false } = {}) => {
+    if (isRefresh) {
+      setContactsRefreshing(true);
+    } else {
+      setContactsLoading(true);
+    }
+    setContactsError(null);
+    try {
+      if (selectedTransport === 'lan') {
+        const lanToken = await getActiveLanToken();
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 6000);
+        let res;
+        try {
+          res = await fetch(LAN_CONTACT_LIST_URL, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'Authorization': `Bearer ${lanToken}`,
+            },
+            body: JSON.stringify({ command: 'get_contact_list', id: CONTACT_REQUEST_ID, param: {} }),
+            signal: controller.signal,
+          });
+        } finally {
+          clearTimeout(timer);
+        }
+        if (!res.ok) throw new Error(`LAN contact list failed (HTTP ${res.status})`);
+        const data = await res.json();
+        setContacts(mapLanContactList(data?.result));
+      } else {
+        const wanToken = await getActiveWanToken();
+        // Prefer the residence SmartScreen last registered with (handles custom
+        // family selections); fall back to the mockup-mapped residence.
+        let residenceId = await AsyncStorage.getItem('registeredResidenceId').catch(() => null);
+        if (!residenceId) {
+          residenceId = selectedMockup === MOCKUP_OPTIONS.MOCKUP_1
+            ? SMARTSCREEN_RESIDENCE_IDS.MOCKUP_1
+            : SMARTSCREEN_RESIDENCE_IDS.MOCKUP_2;
+        }
+        const res = await fetch(WAN_CONTACT_LIST_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'Authorization': `Bearer ${wanToken}`,
+          },
+          body: JSON.stringify({
+            command: 'get_contact_list',
+            id: CONTACT_REQUEST_ID,
+            param: { residence_id: residenceId, show_ability: true },
+          }),
+        });
+        if (!res.ok) throw new Error(`WAN contact list failed (HTTP ${res.status})`);
+        const data = await res.json();
+        setContacts(mapWanContactList(data?.result));
+      }
+    } catch (e) {
+      const message = e?.name === 'AbortError'
+        ? 'Contact list request timed out — the hub may be unreachable.'
+        : (e?.message || 'Failed to load contacts.');
+      console.warn('[Contacts] fetchContacts error:', message);
+      setContacts([]);
+      setContactsError(message);
+    } finally {
+      setContactsLoading(false);
+      setContactsRefreshing(false);
+    }
+  }, [selectedTransport, selectedMockup, getActiveLanToken, getActiveWanToken]);
+
+  // Load contacts on mount, whenever the screen regains focus, and whenever the
+  // transport/mockup selection changes.
+  useFocusEffect(
+    React.useCallback(() => {
+      fetchContacts();
+    }, [fetchContacts])
+  );
 
   // ------- Keep sipStatus in sync with the native SIP line -------
   // Subscribe to onSipRegStatus events so we get live updates
@@ -394,75 +571,97 @@ export default function SdkContactScreen({ navigation, route }) {
 
   // List Item Render
   const renderContactItem = ({ item }) => {
-    const activeSip = registeredTransport ? (getSipCandidatesForContact(item)[0] || '(missing sip)') : '(not registered)';
+    const meta = CONTACT_TYPE_META[item.type] || DEFAULT_TYPE_META;
+    const activeSip = registeredTransport ? (getSipCandidatesForContact(item)[0] || null) : null;
     return (
       <TouchableOpacity
         style={styles.contactItem}
-        activeOpacity={0.7}
+        activeOpacity={0.75}
         onPress={() => {
           setSelectedContact(item);
           setModalVisible(true);
         }}
       >
-        <View style={styles.contactAvatar}>
-          <Text style={styles.avatarText}>{item.name.charAt(0).toUpperCase()}</Text>
+        <View style={[styles.contactAvatar, { backgroundColor: meta.bg }]}>
+          <MaterialCommunityIcons name={meta.icon} size={24} color={meta.color} />
+          {item.online !== undefined && (
+            <View style={[styles.onlineDot, item.online ? styles.onlineDotOn : styles.onlineDotOff]} />
+          )}
         </View>
         <View style={styles.contactInfo}>
-          <Text style={styles.contactName}>{item.name}</Text>
-          <Text style={styles.contactDetail}>
+          <Text style={styles.contactName} numberOfLines={1}>{item.name}</Text>
+          <Text style={styles.contactDetail} numberOfLines={1}>
             {item.type}
-            {registeredTransport === 'lan' && item.sip_lan
-              ? `  •  LAN ${item.sip_lan}`
-              : registeredTransport === 'wan' && item.sip_wan
-              ? `  •  WAN ${item.sip_wan}`
-              : item.sip_wan
-              ? `  •  ${item.sip_wan}`
-              : ''}
+            {activeSip ? `  •  ${registeredTransport.toUpperCase()} ${activeSip}` : ''}
           </Text>
+        </View>
+        <View style={styles.contactActions}>
+          <TouchableOpacity
+            style={[styles.quickCallBtn, styles.quickCallAudio]}
+            onPress={() => handleMakeAudioCall(item)}
+            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+          >
+            <MaterialCommunityIcons name="phone" size={18} color="#6f4bd8" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.quickCallBtn, styles.quickCallVideo]}
+            onPress={() => handleMakeVideoCall(item)}
+            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+          >
+            <MaterialCommunityIcons name="video" size={18} color="#ffffff" />
+          </TouchableOpacity>
         </View>
       </TouchableOpacity>
     );
   };
 
   // Modal for Call Options
-  const CallOptionsModal = () => (
-    <Modal
-      visible={modalVisible}
-      transparent
-      animationType="slide"
-      onRequestClose={() => setModalVisible(false)}
-    >
-      <View style={styles.modalBackground}>
-        <View style={styles.modalContainer}>
-          <Text style={styles.modalTitle}>
-            Call {selectedContact?.name}
-          </Text>
-          <View style={styles.modalButtons}>
+  const CallOptionsModal = () => {
+    const meta = CONTACT_TYPE_META[selectedContact?.type] || DEFAULT_TYPE_META;
+    const sipTarget = selectedContact ? (getSipCandidatesForContact(selectedContact)[0] || null) : null;
+    return (
+      <Modal
+        visible={modalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setModalVisible(false)}
+      >
+        <View style={styles.modalBackground}>
+          <View style={styles.modalContainer}>
+            <View style={[styles.modalAvatar, { backgroundColor: meta.bg }]}>
+              <MaterialCommunityIcons name={meta.icon} size={30} color={meta.color} />
+            </View>
+            <Text style={styles.modalTitle}>{selectedContact?.name}</Text>
+            <Text style={styles.modalSubtitle}>
+              {selectedContact?.type}{sipTarget ? `  •  ${sipTarget}` : ''}
+            </Text>
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.actionBtn, styles.audioBtn]}
+                onPress={() => handleMakeAudioCall(selectedContact)}
+              >
+                <MaterialCommunityIcons name="phone" size={20} color="#ffffff" />
+                <Text style={styles.actionText}>Audio</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.actionBtn, styles.videoBtn]}
+                onPress={() => handleMakeVideoCall(selectedContact)}
+              >
+                <MaterialCommunityIcons name="video" size={20} color="#ffffff" />
+                <Text style={styles.actionText}>Video</Text>
+              </TouchableOpacity>
+            </View>
             <TouchableOpacity
-              style={[styles.actionBtn, styles.audioBtn]}
-              onPress={() => handleMakeAudioCall(selectedContact)}
+              style={[styles.actionBtn, styles.cancelBtn]}
+              onPress={() => setModalVisible(false)}
             >
-              <Text style={styles.actionText}>Audio Call</Text>
-            </TouchableOpacity>
-            <View style={{ height: 12 }} />
-            <TouchableOpacity
-              style={[styles.actionBtn, styles.videoBtn]}
-              onPress={() => handleMakeVideoCall(selectedContact)}
-            >
-              <Text style={styles.actionText}>Video Call</Text>
+              <Text style={styles.cancelText}>Cancel</Text>
             </TouchableOpacity>
           </View>
-          <View style={{ height: 12 }} />
-          <TouchableOpacity
-            style={[styles.actionBtn, styles.cancelBtn]}
-            onPress={() => setModalVisible(false)}
-          >
-            <Text style={styles.cancelText}>Cancel</Text>
-          </TouchableOpacity>
         </View>
-      </View>
-    </Modal>
-  );
+      </Modal>
+    );
+  };
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -518,11 +717,42 @@ export default function SdkContactScreen({ navigation, route }) {
 
       <FlatList
         data={contacts}
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item, index) => String(item.id || index)}
         renderItem={renderContactItem}
         ItemSeparatorComponent={() => <View style={styles.separator} />}
-        contentContainerStyle={{ paddingBottom: 40, paddingTop: 10, paddingHorizontal: 16 }}
+        contentContainerStyle={contacts.length === 0 ? styles.listEmptyContainer : styles.listContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={contactsRefreshing}
+            onRefresh={() => fetchContacts({ isRefresh: true })}
+            colors={['#6f4bd8']}
+            tintColor="#6f4bd8"
+          />
+        }
+        ListEmptyComponent={
+          contactsLoading ? (
+            <View style={styles.listEmptyBox}>
+              <ActivityIndicator size="large" color="#6f4bd8" />
+              <Text style={styles.listEmptyText}>Loading contacts…</Text>
+            </View>
+          ) : contactsError ? (
+            <View style={styles.listEmptyBox}>
+              <MaterialCommunityIcons name="cloud-alert-outline" size={42} color="#b3a6d9" />
+              <Text style={styles.listEmptyText}>{contactsError}</Text>
+              <TouchableOpacity style={styles.retryBtn} onPress={() => fetchContacts()}>
+                <Text style={styles.retryBtnText}>Retry</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={styles.listEmptyBox}>
+              <MaterialCommunityIcons name="account-group-outline" size={42} color="#b3a6d9" />
+              <Text style={styles.listEmptyText}>
+                No contacts found for this {selectedTransport.toUpperCase()} setup.
+              </Text>
+            </View>
+          )
+        }
       />
       {sipStatus !== null && (
         <Text style={styles.sipStatus}>SIP Status: {sipStatus}</Text>
@@ -595,48 +825,115 @@ const styles = StyleSheet.create({
   },
   contactItem: {
     paddingVertical: 12,
-    paddingHorizontal: 12,
-    borderRadius: 16,
+    paddingHorizontal: 14,
+    borderRadius: 18,
     backgroundColor: '#ffffff',
-    marginVertical: 4,
+    marginVertical: 5,
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#e9deff',
+    borderColor: '#ece4fb',
     shadowColor: '#7f58e2',
-    shadowOffset: { width: 0, height: 5 },
-    shadowOpacity: 0.08,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.07,
     shadowRadius: 10,
     elevation: 2,
   },
   contactAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#6f4bd8',
+    width: 50,
+    height: 50,
+    borderRadius: 25,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 16,
+    marginRight: 14,
   },
-  avatarText: {
-    color: '#ffffff',
-    fontSize: 20,
-    fontWeight: '700',
+  onlineDot: {
+    position: 'absolute',
+    right: 0,
+    bottom: 0,
+    width: 13,
+    height: 13,
+    borderRadius: 7,
+    borderWidth: 2,
+    borderColor: '#ffffff',
+  },
+  onlineDotOn: {
+    backgroundColor: '#22c55e',
+  },
+  onlineDotOff: {
+    backgroundColor: '#c4b5e8',
   },
   contactInfo: {
     flex: 1,
     justifyContent: 'center',
+    marginRight: 8,
   },
   contactName: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '700',
     color: '#2f2550',
     marginBottom: 3,
   },
   contactDetail: {
-    fontSize: 13,
+    fontSize: 12.5,
+    color: '#8d80b5',
+    fontWeight: '600',
+  },
+  contactActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  quickCallBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 8,
+    borderWidth: 1,
+  },
+  quickCallAudio: {
+    backgroundColor: '#f3edff',
+    borderColor: '#dfd0ff',
+  },
+  quickCallVideo: {
+    backgroundColor: '#6f4bd8',
+    borderColor: '#6f4bd8',
+  },
+  listContent: {
+    paddingBottom: 40,
+    paddingTop: 10,
+    paddingHorizontal: 16,
+  },
+  listEmptyContainer: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+    paddingBottom: 60,
+  },
+  listEmptyBox: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  listEmptyText: {
+    marginTop: 12,
+    fontSize: 14,
     color: '#7f72a3',
-    fontWeight: '500',
+    textAlign: 'center',
+    fontWeight: '600',
+    lineHeight: 20,
+  },
+  retryBtn: {
+    marginTop: 14,
+    paddingHorizontal: 22,
+    paddingVertical: 10,
+    borderRadius: 999,
+    backgroundColor: '#6f4bd8',
+  },
+  retryBtnText: {
+    color: '#ffffff',
+    fontWeight: '700',
+    fontSize: 14,
   },
   separator: {
     height: 1,
@@ -735,29 +1032,47 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    padding: 30,
+    padding: 26,
     width: '100%',
     alignItems: 'center',
     borderTopWidth: 1,
     borderColor: '#e9dcff',
   },
+  modalAvatar: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
   modalTitle: {
-    fontSize: 21,
-    fontWeight: '700',
-    marginBottom: 24,
+    fontSize: 20,
+    fontWeight: '800',
+    marginBottom: 4,
     color: '#31265a',
+    textAlign: 'center',
+  },
+  modalSubtitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#8d80b5',
+    marginBottom: 22,
     textAlign: 'center',
   },
   modalButtons: {
     width: '100%',
     flexDirection: 'row',
     justifyContent: 'space-between',
+    marginBottom: 12,
   },
   actionBtn: {
     flex: 1,
     borderRadius: 16,
-    paddingVertical: 16,
+    paddingVertical: 15,
     alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
     marginHorizontal: 6,
     borderWidth: 1,
   },
@@ -777,6 +1092,7 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontWeight: '700',
     fontSize: 16,
+    marginLeft: 8,
   },
   cancelText: {
     color: '#6246bb',

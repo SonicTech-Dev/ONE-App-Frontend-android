@@ -121,7 +121,11 @@ export default function CallbackRegistration({
         if (response.ok) {
           onStatusRef.current?.('success', data ?? { status: response.status });
         } else {
-          onStatusRef.current?.('error', data ?? { status: response.status, statusText: response.statusText });
+          onStatusRef.current?.('error', {
+            ...(data && typeof data === 'object' ? data : {}),
+            status: response.status,
+            statusText: response.statusText,
+          });
         }
       } catch (error) {
         if (error.name === 'AbortError') return;
