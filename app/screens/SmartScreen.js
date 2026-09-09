@@ -358,12 +358,6 @@ export default function SmartScreen({ navigation }) {
     };
   }, [getActiveWanToken, handleAuthExpired, selectedOption]);
 
-  // Reset callback registration whenever transport or mockup changes so registration
-  // always matches the active selection.
-  useEffect(() => {
-    setCallbackRegistered(false);
-  }, [selectedOption, selectedMockup]);
-
   useEffect(() => {
     setDeviceCategories(getDeviceCategoriesByResidenceId(activeResidenceId));
     setActiveTab('All Devices');
@@ -1021,14 +1015,25 @@ export default function SmartScreen({ navigation }) {
   // Build callback URL strictly with IPv4. Fallback to prior static IPv4 if detection fails.
   const callbackHost = localIpv4 && ipv4Regex.test(localIpv4) ? localIpv4 : '192.168.2.105';
   const callbackUrl = `http://${callbackHost}:8080/`;
-  const activeCallbackConfigUrl = selectedOption === 'WAN' ? WAN_CALLBACK_CONFIG_URL : LAN_CALLBACK_CONFIG_URL;
+  const initialCallbackModeRef = useRef(selectedOption);
+  const initialCallbackResidenceRef = useRef(activeResidenceId);
+  const initialCallbackUrlRef = useRef(callbackUrl);
+  const initialCallbackListenListRef = useRef(
+    selectedOption === 'WAN' ? ['account', 'device'] : ['device']
+  );
+  const callbackMode = initialCallbackModeRef.current;
+  const callbackResidenceId = initialCallbackResidenceRef.current;
+  const callbackRegistrationUrl = initialCallbackUrlRef.current;
+  const callbackListenList = initialCallbackListenListRef.current;
+  const activeCallbackConfigUrl = callbackMode === 'WAN' ? WAN_CALLBACK_CONFIG_URL : LAN_CALLBACK_CONFIG_URL;
   useEffect(() => {
+    console.log('[SmartScreen] Callback registration mode:', callbackMode);
     console.log('[SmartScreen] Callback URL (listening):', callbackUrl);
     console.log('[SmartScreen] Callback registration endpoint:', activeCallbackConfigUrl);
-    if (selectedOption === 'WAN' && ipv4Regex.test(callbackHost)) {
+    if (callbackMode === 'WAN' && ipv4Regex.test(callbackHost)) {
       console.warn('[SmartScreen] WAN callback target is using a private/local IPv4 address. WAN registration may succeed, but cloud callback delivery will fail unless this address is publicly reachable.');
     }
-  }, [activeCallbackConfigUrl, callbackHost, callbackUrl, selectedOption]);
+  }, [activeCallbackConfigUrl, callbackHost, callbackMode, callbackUrl]);
 
   return (
     <Screen>
@@ -1060,11 +1065,11 @@ export default function SmartScreen({ navigation }) {
       {!callbackRegistered && (
         <CallbackRegistration
           deviceCallbackUrl={activeCallbackConfigUrl}
-          callbackUrl={callbackUrl}
+          callbackUrl={callbackRegistrationUrl}
           callbackId="c45e846ca23ab42c9ae469d988ae32a96"
-          listenList={['device']}
-          residenceId={activeResidenceId}
-          networkMode={selectedOption}
+          listenList={callbackListenList}
+          residenceId={callbackResidenceId}
+          networkMode={callbackMode}
           run={true}
           onStatus={handleCallbackStatus}
         />
