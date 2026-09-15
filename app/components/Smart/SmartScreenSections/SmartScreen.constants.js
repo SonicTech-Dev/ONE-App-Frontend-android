@@ -429,8 +429,8 @@ export const MOCKUP_2_DEVICE_CATEGORIES = [
             commandPair: { on: 'turn_on', off: 'turn_off' }
           },
           wan: {
-            device_id: 'd8e2ae118be4c4dba8f41f2aaad1a0cce',
-            ability_id: 'ef9c7d205c6994fe2abe9693b9b7d998a',
+            device_id: 'd241bd9d603284029ab815ccab4e33463',
+            ability_id: 'e60044eaa85e74de8933410ffee6c072c',
             commandPair: { on: 'turn_on', off: 'turn_off' }
           }},
           { title: 'Door/Window Sensor Bedroom', location: 'Bedroom', color: '#ffbf42', isOn: false, iconName: 'door' ,library: 'MaterialCommunityIcons',
@@ -499,8 +499,8 @@ export const MOCKUP_2_DEVICE_CATEGORIES = [
             commandPair: { on: 'turn_on', off: 'turn_off' }
           },
           wan: {
-            device_id: 'd10e5a65e1b214ceb8383039872776b31',
-            ability_id: 'e8b8a2c5e26bc454e83577b90daca9ac7',
+            device_id: 'dc7edf1beadc246b0ab0248d73025d596',
+            ability_id: 'e27f7bf610b324b5f9a842d35e83bc6d0',
             commandPair: { on: 'turn_on', off: 'turn_off' }
           }},
           { title: 'Flood Sensor Kitchen', location: 'Kitchen', color: '#8e44ad', isOn: false, iconName: 'water' ,library: 'MaterialCommunityIcons',
@@ -511,7 +511,7 @@ export const MOCKUP_2_DEVICE_CATEGORIES = [
           },
           wan: {
             device_id: 'dde06e54e26fa4b44a78fa46d756845ad',
-            ability_id: 'e674c572da9014e6ca81d367a4a95417c',
+            ability_id: 'e088670036a8546c3b762eb8b117bbc3f',
             commandPair: { on: 'turn_on', off: 'turn_off' }
           }},
         ],
@@ -526,8 +526,8 @@ export const MOCKUP_2_DEVICE_CATEGORIES = [
             commandPair: { on: 'turn_on', off: 'turn_off' }
           },
           wan: {
-            device_id: 'dc7edf1beadc246b0ab0248d73025d596',
-            ability_id: 'e27f7bf610b324b5f9a842d35e83bc6d0',
+            device_id: 'da6cc81b55f49412e9374787402aab1ba',
+            ability_id: 'e9b082875754c403a8934bbc37f3c9723',
             commandPair: { on: 'turn_on', off: 'turn_off' }
           }},
           { title: 'SpotLight-2 SharedToilet', location: 'Shared Toilet', status: 'On', color: '#eeff00ff', isOn: false, iconName: 'lightbulb-on-outline' ,library: 'MaterialCommunityIcons',
@@ -537,8 +537,8 @@ export const MOCKUP_2_DEVICE_CATEGORIES = [
             commandPair: { on: 'turn_on', off: 'turn_off' }
           },
           wan: {
-            device_id: 'd3ed95e7a4a29494791ef2c2cc3599615',
-            ability_id: 'e8550a0fbbb2f4e64a3a9fc0e48be2c2a',
+            device_id: 'd2de3fc641de34beeadbca68b6bf8209a',
+            ability_id: 'ed80a8a5620da45f293da5c192d0cf06c',
             commandPair: { on: 'turn_on', off: 'turn_off' }
           }},
         ],
@@ -553,8 +553,8 @@ export const MOCKUP_2_DEVICE_CATEGORIES = [
             commandPair: { on: 'turn_on', off: 'turn_off' }
           },
           wan: {
-            device_id: 'd2de3fc641de34beeadbca68b6bf8209a',
-            ability_id: 'ed80a8a5620da45f293da5c192d0cf06c',
+            device_id: 'd8e2ae118be4c4dba8f41f2aaad1a0cce',
+            ability_id: 'ef9c7d205c6994fe2abe9693b9b7d998a',
             commandPair: { on: 'turn_on', off: 'turn_off' }
           }},
         ],
