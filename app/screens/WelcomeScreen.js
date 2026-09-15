@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, Image, TouchableOpacity, Text, Alert, StatusBar } from 'react-native';
+import { View, StyleSheet, Image, TouchableOpacity, Text, Alert, StatusBar, KeyboardAvoidingView, ScrollView, Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Video } from 'react-native-video';
 import { Picker } from '@react-native-picker/picker';
 import AppButton from '../components/AppButton';
@@ -14,6 +15,7 @@ const RESIDENCE_IDS = {
 };
 
 export default function WelcomeScreen({ navigation }) {
+  const insets = useSafeAreaInsets();
   const [isLoginMode, setIsLoginMode] = useState(true);
   const [signInTransport, setSignInTransport] = useState('WAN');
   
@@ -105,12 +107,26 @@ export default function WelcomeScreen({ navigation }) {
         return;
       }
 
-      try {
-        await verifyOnlineAccount(email, password);
-      } catch (_) {
+      // The cloud account can take a moment to finish provisioning right after
+      // the backend creates it, so retry a few times before declaring failure.
+      let verifyError = null;
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          await verifyOnlineAccount(email, password);
+          verifyError = null;
+          break;
+        } catch (err) {
+          verifyError = err;
+          if (err?.code === 'INVALID_CREDENTIALS') break; // won't succeed on retry
+          if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 1500));
+        }
+      }
+      if (verifyError) {
         Alert.alert(
           "Registration Incomplete",
-          "Your account was saved, but setup is not fully completed yet. Please contact support or try again later."
+          verifyError?.code === 'INVALID_CREDENTIALS'
+            ? "Your account was saved, but the password could not be verified. Please contact support."
+            : "Your account was saved, but setup is not fully completed yet. Please contact support or try again later."
         );
         return;
       }
@@ -188,7 +204,19 @@ export default function WelcomeScreen({ navigation }) {
           />
         </View>
 
-        <View style={styles.formContainer}>
+        <KeyboardAvoidingView
+          style={styles.formContainer}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : -100}
+        >
+          <ScrollView
+            contentContainerStyle={[
+              styles.scrollContent,
+              { paddingBottom: insets.bottom + 25 },
+            ]}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
           <View style={styles.tabContainer}>
             <TouchableOpacity 
               style={[styles.tabButton, isLoginMode ? styles.activeTab : null]} 
@@ -237,6 +265,8 @@ export default function WelcomeScreen({ navigation }) {
                     selectedValue={selectedResidence}
                     onValueChange={setSelectedResidence}
                     style={styles.residencePicker}
+                    mode="dropdown"
+                    dropdownIconColor="#666"
                   >
                     <Picker.Item label="Mockup 1" value="mockup1" />
                     <Picker.Item label="Mockup 2" value="mockup2" />
@@ -304,7 +334,8 @@ export default function WelcomeScreen({ navigation }) {
             )}
 
           </View>
-        </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
       </View>
     </View>
   );
@@ -325,6 +356,9 @@ const styles = StyleSheet.create({
   },
   formContainer: {
     flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
     paddingHorizontal: 25,
     justifyContent: 'center',
   },
@@ -388,6 +422,8 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     marginTop: 10,
     paddingLeft: 12,
+    justifyContent: 'center',
+    overflow: 'hidden',
   },
   residencePickerLabel: {
     color: '#666',
@@ -395,8 +431,8 @@ const styles = StyleSheet.create({
     paddingTop: 8,
   },
   residencePicker: {
-    height: 44,
-    marginLeft: -4,
+    height: 54,
+    color: '#000',
   },
   modeBannerLabel: {
     color: '#1c1c1c',

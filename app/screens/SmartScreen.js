@@ -243,6 +243,8 @@ export default function SmartScreen({ navigation }) {
 
   // Tracks local controls to suppress callback-echo updates.
   const selfControlSuppressRef = useRef(new Map());
+  const wanSyncInFlightRef = useRef(false);
+  const wanSyncQueuedRef = useRef(false);
 
   const makeSuppressKey = useCallback((mode, id, ability) => {
     return `${mode}:${String(id || '')}:${String(ability || '')}`;
@@ -674,6 +676,82 @@ export default function SmartScreen({ navigation }) {
     console.log(`[SmartScreen] Connecting to WAN WebSocket: ${wsUrl}`);
     const ws = new WebSocket(wsUrl);
 
+    const syncDeviceStates = async () => {
+      if (wanSyncInFlightRef.current) {
+        wanSyncQueuedRef.current = true;
+        return;
+      }
+      wanSyncInFlightRef.current = true;
+
+      try {
+        const activeToken = await getActiveWanToken();
+        const wanBody = {
+          command: 'get_device_list',
+          id: 'c45e846ca23ab42c9ae469d988ae32a96',
+          param: { residence_id: activeResidenceId, show_ability: true },
+        };
+
+        const res = await fetch(`${BACKEND_URL}/device_status/`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'Authorization': `Bearer ${activeToken}`
+          },
+          body: JSON.stringify(wanBody)
+        });
+
+        if (!res.ok) {
+          const errorText = await res.text().catch(() => 'No text body');
+          console.error(`[WAN SYNC ERROR] Proxy rejected get_device_list! Status: ${res.status}, Body:`, errorText);
+          return;
+        }
+
+        const data = await res.json();
+        const rawArray = Array.isArray(data?.result)
+          ? data.result
+          : (Array.isArray(data?.result?.devices) ? data.result.devices : []);
+        const validApiDevices = rawArray.flatMap((device) => (
+          device?.sub_devices ? [device, ...device.sub_devices] : [device]
+        ));
+
+        setDeviceCategories((prevCats) => prevCats.map((cat) => ({
+          ...cat,
+          items: cat.items.map((device) => {
+            const targetId = device?.wan?.device_id;
+            const targetAbilityId = device?.wan?.ability_id;
+            const apiDev = validApiDevices.find((candidate) => candidate?.device_id === targetId);
+            const matchedAbility = apiDev?.abilities?.find(
+              (ability) => ability?.ability_id === targetAbilityId
+            );
+
+            if (!matchedAbility || shouldSuppressSelfCallback('wan', targetId, targetAbilityId)) {
+              return device;
+            }
+
+            const normalizedState = String(matchedAbility.state || '').trim().toLowerCase();
+            return {
+              ...device,
+              isOn: normalizedState === 'on' ? true : normalizedState === 'off' ? false : device.isOn,
+              status: normalizedState === 'on'
+                ? 'On'
+                : normalizedState === 'off'
+                  ? 'Off'
+                  : device.status,
+            };
+          }),
+        })));
+      } catch (fetchErr) {
+        console.error('[WAN SYNC ERROR] Fetch crashed:', fetchErr);
+      } finally {
+        wanSyncInFlightRef.current = false;
+        if (wanSyncQueuedRef.current) {
+          wanSyncQueuedRef.current = false;
+          syncDeviceStates();
+        }
+      }
+    };
+
     ws.onmessage = async (e) => {
       try {
         const payload = JSON.parse(e.data);
@@ -682,99 +760,7 @@ export default function SmartScreen({ navigation }) {
         // WAN eCloud sends empty "sync" frames rather than raw payload bodies.
         // On sync frames, we must poll the latest live states manually from the proxy API
         if (payload?.notice === 'device_listen_notice' && payload?.action === 'sync') {
-          const activeToken = await getActiveWanToken();
-          
-          // Radically optimized single-fetch pipeline leveraging the augmented get_device_list endpoint. 
-          // Retreives the global house natively in under 150ms!
-          const wanBody = {
-            command: 'get_device_list',
-            id: 'c45e846ca23ab42c9ae469d988ae32a96',
-            param: { residence_id: activeResidenceId, show_ability: true },
-          };
-          
-          try {
-            let validApiDevices = [];
-            
-            const res = await fetch(`${BACKEND_URL}/device_status/`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-                'Authorization': `Bearer ${activeToken}`
-              },
-              body: JSON.stringify(wanBody)
-            });
-
-            if (res.ok) {
-              const data = await res.json();
-              
-              // Let's console log the raw shape to figure out exactly how the abilities arrive!
-        
-              if (data?.result) {
-                // Handle both structures: if it directly returns an array or if it wraps it in .devices
-                const rawArray = Array.isArray(data.result) 
-                  ? data.result 
-                  : (Array.isArray(data.result.devices) ? data.result.devices : [data.result]);
-
-                rawArray.forEach(dev => {
-                  validApiDevices.push(dev);
-                  if (Array.isArray(dev.sub_devices)) {
-                    validApiDevices.push(...dev.sub_devices);
-                  }
-                });
-              }
-            } else {
-              const errorText = await res.text().catch(e => 'No text body');
-              console.error(`[WAN SYNC ERROR] Proxy rejected get_device_list! Status: ${res.status}, Body:`, errorText);
-            }
-            
-          
-            setDeviceCategories((prevCats) => {
-              return prevCats.map((cat) => ({
-                ...cat,
-                items: cat.items.map((device) => {
-                  const targetId = device?.wan?.device_id;
-                  const apiDev = validApiDevices.find(d => d.device_id === targetId);
-                  
-                  if (!apiDev || !Array.isArray(apiDev.abilities)) return device;
-                  
-                  const targetAbilityId = device?.wan?.ability_id;
-                  const matchedAbility = apiDev.abilities.find(a => !targetAbilityId || a.ability_id === targetAbilityId);
-                  
-                  if (!matchedAbility) return device;
-                  if (shouldSuppressSelfCallback('wan', targetId, targetAbilityId)) return device;
-
-                  const normalizeStateLabel = (state) => {
-                    if (typeof state !== 'string') return null;
-                    const normalizedState = state.trim().toLowerCase();
-                    if (normalizedState === 'on') return 'On';
-                    if (normalizedState === 'off') return 'Off';
-                    return normalizedState.charAt(0).toUpperCase() + normalizedState.slice(1);
-                  };
-
-                  const rawState = matchedAbility?.state;
-                  const normalizedState = typeof rawState === 'string' ? rawState.trim().toLowerCase() : null;
-                  const nextStatus = normalizeStateLabel(rawState) ?? device.status;
-                  const nextIsOn = normalizedState === 'on' 
-                    ? true 
-                    : normalizedState === 'off' 
-                      ? false 
-                      : device.isOn;
-                  
-                
-                  
-                  return {
-                    ...device,
-                    isOn: nextIsOn,
-                    status: nextStatus,
-                  };
-                })
-              }));
-            });
-            
-          } catch (fetchErr) {
-            console.error('[WAN SYNC ERROR] Fetch crashed:', fetchErr);
-          }
+          await syncDeviceStates();
         } else {
           handleRequest(null, payload);
         }
@@ -896,11 +882,12 @@ export default function SmartScreen({ navigation }) {
       return;
     }
     const newIsOn = newControl === 'on';
+    const selectedDeviceId = dev.device_id;
     setDeviceCategories((prevCats) =>
       prevCats.map((cat) => ({
         ...cat,
         items: cat.items.map((d) =>
-          d.title === device.title && d.location === device.location
+          d?.[mode]?.device_id === selectedDeviceId
             ? { ...d, isOn: newIsOn, status: newIsOn ? 'On' : 'Off' }
             : d
         ),
@@ -1015,17 +1002,21 @@ export default function SmartScreen({ navigation }) {
   // Build callback URL strictly with IPv4. Fallback to prior static IPv4 if detection fails.
   const callbackHost = localIpv4 && ipv4Regex.test(localIpv4) ? localIpv4 : '192.168.2.105';
   const callbackUrl = `http://${callbackHost}:8080/`;
-  const initialCallbackModeRef = useRef(selectedOption);
-  const initialCallbackResidenceRef = useRef(activeResidenceId);
-  const initialCallbackUrlRef = useRef(callbackUrl);
-  const initialCallbackListenListRef = useRef(
-    selectedOption === 'WAN' ? ['account', 'device'] : ['device']
-  );
-  const callbackMode = initialCallbackModeRef.current;
-  const callbackResidenceId = initialCallbackResidenceRef.current;
-  const callbackRegistrationUrl = initialCallbackUrlRef.current;
-  const callbackListenList = initialCallbackListenListRef.current;
+  // Must track the live transport/residence (not frozen at mount) so switching
+  // LAN<->WAN actually re-registers the callback against the new target.
+  const callbackMode = selectedOption;
+  const callbackResidenceId = activeResidenceId;
+  const callbackRegistrationUrl = callbackUrl;
+  const callbackListenList = callbackMode === 'WAN' ? ['account', 'device'] : ['device'];
   const activeCallbackConfigUrl = callbackMode === 'WAN' ? WAN_CALLBACK_CONFIG_URL : LAN_CALLBACK_CONFIG_URL;
+
+  // Force re-registration whenever the transport or active residence changes,
+  // otherwise a stale `callbackRegistered=true` from a previous mode blocks the
+  // new mode's device from ever being told where to POST callbacks.
+  useEffect(() => {
+    setCallbackRegistered(false);
+  }, [callbackMode, callbackResidenceId]);
+
   useEffect(() => {
     console.log('[SmartScreen] Callback registration mode:', callbackMode);
     console.log('[SmartScreen] Callback URL (listening):', callbackUrl);
