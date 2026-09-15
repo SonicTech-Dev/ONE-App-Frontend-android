@@ -1,7 +1,8 @@
 import React from 'react';
-import { ScrollView, View, TouchableOpacity, Text } from 'react-native';
+import { ScrollView, View } from 'react-native';
 
 import DeviceTile from '../DeviceTile';
+import { useBottomSpacing } from '../../../navigation/tabBarLayout';
 import styles from './SmartScreen.styles';
 
 export default function DeviceGrid({
@@ -15,8 +16,14 @@ export default function DeviceGrid({
   activeTab, // Use activeTab to determine which tab is selected
   disabled = false,
 }) {
+  const bottomSpacing = useBottomSpacing();
+
   return (
-    <ScrollView contentContainerStyle={styles.scrollContainer} scrollEventThrottle={16}>
+    <ScrollView
+      contentContainerStyle={[styles.scrollContainer, { paddingBottom: bottomSpacing }]}
+      scrollEventThrottle={16}
+      showsVerticalScrollIndicator={false}
+    >
       {/* Device Tiles */}
       {filteredDevices
         .reduce((result, device, index) => {

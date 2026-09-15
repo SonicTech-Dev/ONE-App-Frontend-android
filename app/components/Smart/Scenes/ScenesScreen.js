@@ -14,6 +14,7 @@ import {
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { Dropdown } from 'react-native-element-dropdown';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useBottomSpacing } from '../../../navigation/tabBarLayout';
 import { useAuth } from '../../../context/AuthContext';
 import Screen from '../../Screen';
 import { MOCKUP_OPTIONS } from '../SmartScreenSections/SmartScreen.constants';
@@ -91,6 +92,7 @@ export default function ScenesScreen({ route, navigation }) {
     : MOCKUP_OPTIONS.MOCKUP_2;
   const { getActiveLanToken, getActiveWanToken } = useAuth();
   const insets = useSafeAreaInsets();
+  const bottomSpacing = useBottomSpacing();
   const [scenes, setScenes] = useState([]);
   const [selectedScene, setSelectedScene] = useState(null);
   const [selectedSceneDetails, setSelectedSceneDetails] = useState(null);
@@ -897,7 +899,7 @@ export default function ScenesScreen({ route, navigation }) {
     <Screen style={styles.screen}>
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingBottom: bottomSpacing }]}
         showsVerticalScrollIndicator
         refreshControl={<RefreshControl refreshing={loading} onRefresh={loadScenes} tintColor="#6f4bd8" />}
       >

@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import styled from 'styled-components/native';
-import Ionicons from 'react-native-vector-icons/Ionicons';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { ActivityIndicator, Modal, ScrollView, TouchableOpacity, View, Text } from 'react-native';
@@ -91,7 +90,7 @@ const StatsSection = ({
         {/* Contacts */}
         <TouchableOpacity 
           style={[styles.actionButtonWrapper, actionsDisabled ? styles.disabledActionButtonWrapper : null]} 
-          onPress={() => navigation.navigate('SdkTest', { selectedMockup, selectedOption, selectedResidenceId })}
+          onPress={() => navigation.navigate('ContactsScreen', { selectedMockup, selectedOption, selectedResidenceId })}
           disabled={actionsDisabled}
           activeOpacity={0.7}
         >

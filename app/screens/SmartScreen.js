@@ -101,8 +101,9 @@ async function fetchWanSipCredentials(wanToken, residenceId = SIP_DEFAULT_RESIDE
     throw new Error('[WAN SIP] ciphertext missing from contact_list response');
   }
 
-  console.log('[WAN SIP] displayName:', displayName);
-  console.log('[WAN SIP] ciphertext:', sipToken);
+  // Never log the ciphertext itself — it is a SIP credential and logcat is readable
+  // by other tooling on the device.
+  console.log('[WAN SIP] displayName:', displayName, '| ciphertext received:', !!sipToken);
 
   return { sipToken, displayName };
 }
@@ -159,8 +160,7 @@ async function fetchLanSipCredentials(lanToken) {
   const lastName = accountData?.result?.last_name || '';
   const displayName = `${firstName} ${lastName}`.trim() || 'User';
 
-  console.log('[LAN SIP] displayName:', displayName);
-  console.log('[LAN SIP] sip_info (ciphertext):', sipToken);
+  console.log('[LAN SIP] displayName:', displayName, '| sip_info received:', !!sipToken);
 
   return { sipToken, displayName };
 }
@@ -757,9 +757,12 @@ export default function SmartScreen({ navigation }) {
         const payload = JSON.parse(e.data);
         console.log('[SmartScreen] WAN WebSocket received:', payload);
         
-        // WAN eCloud sends empty "sync" frames rather than raw payload bodies.
-        // On sync frames, we must poll the latest live states manually from the proxy API
-        if (payload?.notice === 'device_listen_notice' && payload?.action === 'sync') {
+        // WAN eCloud device notices arrive in two shapes: bare "sync" frames, and
+        // "state" frames whose body sits under `param` (not the LAN `data.payload`
+        // shape handleRequest expects). Re-polling the proxy for either one keeps a
+        // single authoritative source for device state; syncDeviceStates collapses
+        // overlapping calls into one in-flight request plus one trailing refresh.
+        if (payload?.notice === 'device_listen_notice') {
           await syncDeviceStates();
         } else {
           handleRequest(null, payload);

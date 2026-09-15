@@ -15,6 +15,7 @@ import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityI
 import { useAuth } from '../../context/AuthContext';
 import { MOCKUP_OPTIONS } from '../Smart/SmartScreenSections/SmartScreen.constants';
 import Screen from '../Screen';
+import { useBottomSpacing } from '../../navigation/tabBarLayout';
 import {
   buildBatchDeleteFamilyAccountRequest,
   buildChangeFamilyAdminRequest,
@@ -43,6 +44,7 @@ const RESIDENCE_IDS = {
 export default function FamilyManagementScreen({ route, navigation }) {
   const currentAccountId = route?.params?.currentAccountId || '';
   const { networkMode, getActiveLanToken, getActiveWanToken } = useAuth();
+  const bottomSpacing = useBottomSpacing();
   const activeNetworkMode = normalizeNetworkMode(route?.params?.selectedOption, networkMode);
   const isLan = activeNetworkMode === 'LAN';
   const selectedMockup = route?.params?.selectedMockup === MOCKUP_OPTIONS.MOCKUP_1
@@ -391,7 +393,7 @@ export default function FamilyManagementScreen({ route, navigation }) {
     <Screen style={styles.screen}>
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingBottom: bottomSpacing }]}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={loadFamilyInfo} tintColor="#6f4bd8" />}
       >
         <View style={styles.headerRow}>

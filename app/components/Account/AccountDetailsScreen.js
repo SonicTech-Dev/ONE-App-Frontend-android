@@ -16,6 +16,7 @@ import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityI
 import { BACKEND_URL, useAuth } from '../../context/AuthContext';
 import { MOCKUP_OPTIONS } from '../Smart/SmartScreenSections/SmartScreen.constants';
 import Screen from '../Screen';
+import { useBottomSpacing } from '../../navigation/tabBarLayout';
 import routes from '../../navigation/routes';
 import {
   buildGetAccountInfoRequest,
@@ -45,6 +46,7 @@ const RESIDENCE_IDS = {
 
 export default function AccountDetailsScreen({ route, navigation }) {
   const { networkMode, authRole: authenticatedRole, getActiveLanToken, getActiveWanToken, logout, updateStoredPassword } = useAuth();
+  const bottomSpacing = useBottomSpacing();
   const activeNetworkMode = normalizeNetworkMode(route?.params?.selectedOption, networkMode);
   const isLan = activeNetworkMode === 'LAN';
   const selectedMockup = route?.params?.selectedMockup === MOCKUP_OPTIONS.MOCKUP_1
@@ -422,7 +424,7 @@ export default function AccountDetailsScreen({ route, navigation }) {
     <Screen style={styles.screen}>
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingBottom: bottomSpacing }]}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={loadAccountDetails} tintColor="#6f4bd8" />}
       >
         <View style={styles.headerRow}>

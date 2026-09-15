@@ -1,7 +1,5 @@
-import { Alert, StyleSheet, Text, View } from "react-native"
-import React,{useContext} from "react"
+import React from "react"
 import { createStackNavigator } from "@react-navigation/stack";
-import { getFocusedRouteNameFromRoute } from "@react-navigation/native";
 import WelcomeScreen from "../screens/WelcomeScreen";
 import AppNavigator from "./AppNavigator";
 import ActiveCallScreen from "../screens/ActiveCallScreen";

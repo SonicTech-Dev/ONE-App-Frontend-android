@@ -1,28 +1,18 @@
-import React,{useRef,useState,useEffect,useContext} from 'react';
-import {  
+import React,{useRef,useState,useEffect} from 'react';
+import {
     View,
-    Image,
     StyleSheet,
-    Platform,
     ScrollView,
     TouchableOpacity,
     FlatList,
     Modal,
-    Alert,
-    Text,
     Dimensions,
     Animated
 } from 'react-native';
 import useColors from '../../../hooks/useColors';
-import AntDesign from 'react-native-vector-icons/AntDesign';
-import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
-import Feather from 'react-native-vector-icons/Feather';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
-import FontAwesome from 'react-native-vector-icons/FontAwesome';
-import Entypo from 'react-native-vector-icons/Entypo';
 import UploadScreen from "../../../screens/UploadScreen";
 import { BlurView } from '@react-native-community/blur';
-import LinearGradient from "react-native-linear-gradient";
 
 
 function UserPictureModal({modalVisible, setModalVisible, WhoopUserData}) {

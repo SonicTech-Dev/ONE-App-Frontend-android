@@ -74,9 +74,18 @@ const HealthScreen = ({ navigation }) => {
   const [isModalOpen, setIsModalOpen]=useState(false)
   const [sleepTokenHistory, setSleepTokenHistory] = useState([]);
 
-  console.log(EXPO_WHOOP_CLIENT_ID)
   // OAuth Request Configuration
   const handleOAuthLogin = async () => {
+    // Without .env credentials the auth URL would carry client_id=undefined and
+    // fail on WHOOP's side with an opaque error, so say what's actually wrong.
+    if (!EXPO_WHOOP_CLIENT_ID || !EXPO_WHOOP_CLIENT_SECRET) {
+      Alert.alert(
+        'Preview only',
+        'WHOOP integration is not configured in this build. Add EXPO_WHOOP_CLIENT_ID and EXPO_WHOOP_CLIENT_SECRET to a .env file to enable it.'
+      );
+      return;
+    }
+
     const authUrl = `${discovery.authorizationEndpoint}?client_id=${EXPO_WHOOP_CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=code&scope=${encodeURIComponent("read:recovery read:cycles read:workout read:sleep read:profile offline")}&state=onedevelopment`;
     try {
       await Linking.openURL(authUrl);
@@ -95,7 +104,7 @@ const HealthScreen = ({ navigation }) => {
   const loadWhoopAccessToken = async () => {
     try {
       const token = await storage.getAccessToken();
-      console.log("Loaded access token:", token);
+      console.log("Loaded access token:", token ? "present" : "none");
       setAccessToken(token);
     } catch (error) {
       console.error("Error loading access token:", error);
@@ -374,10 +383,17 @@ const openWhoopProfileModal=()=>{
 
   {!accessToken && (
           <View style={styles.connectContainer}>
+            <View style={styles.previewBadge}>
+              <Text style={styles.previewBadgeText}>Preview</Text>
+            </View>
             <Image
               source={require('../assets/whoop-logo-white.png')}
               style={styles.connectLogo}
             />
+            <Text style={styles.previewNote}>
+              Wearable health tracking is a preview of a planned integration and
+              is not connected in this build.
+            </Text>
             <TouchableOpacity style={styles.connectButton} onPress={handleOAuthLogin}>
               <Text style={styles.connectButtonText}>Connect to WHOOP</Text>
             </TouchableOpacity>
@@ -854,7 +870,30 @@ sleepSubtitle: {
   connectLogo: {
     width: 220,
     resizeMode: 'contain',
-    marginBottom: 60,
+    marginBottom: 24,
+  },
+  previewBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: 'rgba(50,210,214,0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(50,210,214,0.4)',
+    marginBottom: 28,
+  },
+  previewBadgeText: {
+    color: '#32d2d6',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 1.6,
+    textTransform: 'uppercase',
+  },
+  previewNote: {
+    color: 'rgba(255,255,255,0.6)',
+    fontSize: 13,
+    lineHeight: 19,
+    textAlign: 'center',
+    marginBottom: 36,
   },
   connectButton: {
     backgroundColor: '#32d2d6',

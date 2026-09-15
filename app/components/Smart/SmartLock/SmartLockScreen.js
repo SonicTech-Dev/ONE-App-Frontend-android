@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
 import Screen from '../../Screen';
 import { useAuth } from '../../../context/AuthContext';
+import { useBottomSpacing } from '../../../navigation/tabBarLayout';
 
 function normalizeMode(mode, fallbackMode) {
   const modeFromRoute = String(mode || '').toUpperCase();
@@ -13,6 +14,7 @@ function normalizeMode(mode, fallbackMode) {
 
 export default function SmartLockScreen({ route, navigation }) {
   const { networkMode } = useAuth();
+  const bottomSpacing = useBottomSpacing();
   const selectedOption = normalizeMode(route?.params?.selectedOption, networkMode);
   const selectedMockup = route?.params?.selectedMockup || 'mockup2';
 
@@ -26,7 +28,7 @@ export default function SmartLockScreen({ route, navigation }) {
     }
 
     // Fallback for cases where this screen is reached through a parent navigator context.
-    navigation.getParent?.()?.navigate('LifestyleBasket', {
+    navigation.getParent?.()?.navigate('Smart', {
       screen: screenName,
       params,
     });
@@ -51,7 +53,7 @@ export default function SmartLockScreen({ route, navigation }) {
 
   return (
     <Screen style={styles.screen}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: bottomSpacing }]}>
         <View style={styles.headerCard}>
           <Text style={styles.title}>Smart Lock</Text>
           <Text style={styles.subtitle}>Select which lock you want to control.</Text>

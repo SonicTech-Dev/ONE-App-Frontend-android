@@ -8,9 +8,11 @@ import {
   getDeviceCategoriesByResidenceId,
 } from '../Smart/SmartScreenSections/SmartScreen.constants';
 import DeviceListOnlineStatus from './online_status_list';
+import { useBottomSpacing } from '../../navigation/tabBarLayout';
 
 const DeviceStatuses = () => {
   const route = useRoute();
+  const bottomSpacing = useBottomSpacing();
   const {
     selectedOption = 'LAN',
     selectedMockup = MOCKUP_OPTIONS.MOCKUP_2,
@@ -47,7 +49,7 @@ const DeviceStatuses = () => {
         onLoadingChange={handleLoadingChange}
       />
 
-      <ScrollViewWrapper>
+      <ScrollViewWrapper contentContainerStyle={{ paddingBottom: bottomSpacing }}>
         <HeaderCard>
           <HeaderTitle>All Device Status</HeaderTitle>
           <HeaderSubtitle>Live health for every connected smart device.</HeaderSubtitle>

@@ -1,12 +1,9 @@
 module.exports = {
   preset: 'react-native',
+  // Match every react-native-* / @react-native-* package, not just a hand-listed
+  // few — third-party RN packages ship untranspiled ESM and must be transformed.
   transformIgnorePatterns: [
-    'node_modules/(?!(react-native' +
-      '|@react-native' +
-      '|react-native-gesture-handler' +
-      '|@react-navigation' +
-      '|react-native-vector-icons' +
-      ')/)'
+    'node_modules/(?!(react-native[^/]*|@react-native[^/]*|@react-navigation)/)'
   ],
   setupFiles: [
     '<rootDir>/jest.setup.js',

@@ -5,7 +5,6 @@ const key2 = "whoopRefreshToken"
 
 const storeToken = async (data) => {
   try {
-    console.log('store token data',data)
     await SecureKeyStore.set(key, data.access);
     await SecureKeyStore.set(key2, data.refresh);
   } catch (error) {

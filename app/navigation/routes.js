@@ -1,16 +1,15 @@
+// Route-name constants. Every entry here must match a registered Stack.Screen
+// name — 'RequestScreen' was removed because no such screen exists.
 export default Object.freeze({
+  WELCOME: 'WelcomeScreen',
 
-// WELCOME
-WELCOME:'WelcomeScreen',
+  HOME: 'HomeScreen',
+  HEALTHSCREEN: 'HealthScreen',
 
-// HOME
-HOME:'HomeScreen',
-SMARTSCREEN:'SmartScreen',
-SERVICESSCREEN:"ServicesScreen",
-REQUESTSCREEN:"RequestScreen",
-HEALTHSCREEN:'HealthScreen',
-ACCOUNTDETAILS:'AccountDetailsScreen',
-FAMILYMANAGEMENT:'FamilyManagementScreen',
+  SMARTSCREEN: 'SmartScreen',
+  CONTACTS: 'ContactsScreen',
+  ACCOUNTDETAILS: 'AccountDetailsScreen',
+  FAMILYMANAGEMENT: 'FamilyManagementScreen',
 
+  SERVICESSCREEN: 'ServicesScreen',
 });
-  

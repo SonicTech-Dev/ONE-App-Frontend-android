@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, Image, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, StyleSheet, TouchableOpacity } from 'react-native';
 import useColors from '../../hooks/useColors';
 
 const MenuHeader = ({onProfilePress}) => {

@@ -1,8 +1,7 @@
-import { Alert, StyleSheet, Text, View } from "react-native";
 import React from "react";
 import { createStackNavigator } from "@react-navigation/stack";
 import SmartScreen from "../../screens/SmartScreen";
-import SdkTest from "../../screens/SdkTest"; // <-- Import your SDK Usage screen
+import ContactsScreen from "../../screens/ContactsScreen";
 import SmartLockScreen from "../../components/Smart/SmartLock/SmartLockScreen";
 import SL50LockScreen from "../../components/Smart/SmartLock/SL50Lock";
 import F2Lock from "../../components/Smart/SmartLock/F2Lock";
@@ -14,7 +13,7 @@ import AccountDetailsScreen from "../../components/Account/AccountDetailsScreen"
 import FamilyManagementScreen from "../../components/Account/FamilyManagementScreen";
 const Stack = createStackNavigator();
 
-const SmartNavigator = ({ route, navigation }) => {
+const SmartNavigator = () => {
   return (
     <Stack.Navigator>
       <Stack.Screen
@@ -28,8 +27,8 @@ const SmartNavigator = ({ route, navigation }) => {
         }}
       />
       <Stack.Screen
-        name="SdkTest"
-        component={SdkTest}
+        name="ContactsScreen"
+        component={ContactsScreen}
         options={{
           headerShown: false,
         }}

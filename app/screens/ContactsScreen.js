@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -23,89 +23,14 @@ import {
   SMARTSCREEN_RESIDENCE_IDS,
 } from '../components/Smart/SmartScreenSections/SmartScreen.constants';
 import { useAuth } from '../context/AuthContext';
+import { useBottomSpacing } from '../navigation/tabBarLayout';
 const { Akuvox } = NativeModules;
 
 /**
- * Contacts are now loaded dynamically via get_contact_list (LAN hub or WAN cloud).
- * We read 'registeredTransport' from AsyncStorage to know whether LAN/WAN was chosen.
- * Buttons for init/register are removed — registration happens automatically in SmartScreen.
+ * Contacts are loaded dynamically via get_contact_list (LAN hub or WAN cloud).
+ * 'registeredTransport' in AsyncStorage tells us whether LAN/WAN was chosen;
+ * SIP registration itself happens automatically in SmartScreen.
  */
-
-/*
- * Legacy static contact list — kept for reference only (do not delete yet).
- * Superseded by the dynamic get_contact_list fetching below.
-const API_RESULT_MOCKUP_1 = {
-  family_name: 'One-Dev Mockup-Flat',
-  sip_group: '1191000500',
-  devices: [
-    { device_id: 'd4f54a92bea2a440c8a6a23d0b636dcf7', device_name: 'HyPanel Supreme', mac: '0C110500755C', sip_wan: '1192101703', sip_lan: '1000' },
-    { device_id: 'd1b001e5ddcf24d65a9d1c6ad23df43ba', device_name: 'Hypanel Lux', mac: '0C11052BF1CF', sip_wan: '1192101705', sip_lan: '1003' },
-    { device_id: 'd9a69e144b34c47ea822169672c0fd40d', device_name: 'Hypanel KeyPlus  1 on M1', mac: '0C110527CAAC', sip_wan: '1192102163', sip_lan: '1001' },
-    { device_id: 'd7ed72241e59342d29daffc0911503029', device_name: 'Hypanel KeyPlus 2 in M1', mac: '0C110527CA8F', sip_wan: '1192102164', sip_lan: '1002' },
-  ],
-  accounts: [
-    { account_id: 'a9b41de81c3284515a5e833d53412fe14', sip_wan: '1192101702', sip_lan: '1192101702', account_name: 'fayis@sonictech.ae', first_name: 'Laguna Mockup', last_name: 'One-Development', email: 'fayis@sonictech.ae', main_sip: '1192101504' },
-    { account_id: 'a2a340656d43745fdafce231cc9d1b2d1', sip_wan: '1192102110', sip_lan: '1192102110', account_name: 'marwan@sonictech.ae', first_name: 'Marwan', last_name: 'Khater', email: 'marwan@sonictech.ae', main_sip: '1467100107' },
-  ],
-  akuvox_devices: [
-    { mac: '0C11052C6E92', device_name: 'Intercom R29', sip_wan: '1192101722', sip_lan: '1004' },
-  ],
-};
-
-const API_RESULT_MOCKUP_2 = {
-  family_name: 'One-Dev Mockup-Flat',
-  sip_group: '1191000500',
-  devices: [
-    { device_id: 'd03852d726b074d77a7d658e7fac7d3b6', device_name: 'HyPanel Supreme', mac: '0C110500755C', sip_wan: '1192102080', sip_lan: '1000' },
-    { device_id: 'd394ddaa179d0469ebe4b7c710bfbe5e0', device_name: 'Hypanel Lux', mac: '0C11052BF1CF', sip_wan: '1192102082', sip_lan: '1037' },
-    { device_id: 'd6909df0aa38444ba8e11ce1f55e3cb9d', device_name: 'Hypanel KeyPlus  Bedside', mac: '0C110527CAAC', sip_wan: '1192102081', sip_lan: '1035' },
-    { device_id: 'd715ca4ce814c436ba3cb8a88702170c5', device_name: 'Hypanel KeyPlus Kitchen', mac: '0C110527CA8F', sip_wan: '1192102083', sip_lan: '1036' },
-  ],
-  accounts: [
-    { account_id: 'a9b41de81c3284515a5e833d53412fe14', sip_wan: '1192101702', sip_lan: '1192101702', account_name: 'fayis@sonictech.ae', first_name: 'Laguna Mockup', last_name: 'One-Development', email: 'fayis@sonictech.ae', main_sip: '1192101504' },
-    { account_id: 'a2a340656d43745fdafce231cc9d1b2d1', sip_wan: '1192102110', sip_lan: '1192102110', account_name: 'marwan@sonictech.ae', first_name: 'Marwan', last_name: 'Khater', email: 'marwan@sonictech.ae', main_sip: '1467100107' },
-  ],
-  akuvox_devices: [
-    { mac: '0C11052C6E79', device_name: 'Intercom R29', sip_wan: '1192102367', sip_lan: '1038' },
-  ],
-};
-
-const getContacts = (apiResult) => {
-  const contacts = [];
-  apiResult.devices.forEach(device => {
-    contacts.push({
-      id: device.device_id,
-      name: device.device_name,
-      sip_wan: device.sip_wan,
-      sip_lan: device.sip_lan,
-      sip_group: apiResult.sip_group,
-      type: 'Device',
-    });
-  });
-  apiResult.accounts.forEach(account => {
-    contacts.push({
-      id: account.account_id,
-      name: `${account.first_name} ${account.last_name}`,
-      sip_wan: account.sip_wan,
-      sip_lan: account.sip_lan,
-      main_sip: account.main_sip,
-      sip_group: apiResult.sip_group,
-      type: 'Account',
-    });
-  });
-  apiResult.akuvox_devices.forEach((dev, idx) => {
-    contacts.push({
-      id: `akuvox_${idx}`,
-      name: dev.device_name,
-      sip_wan: dev.sip_wan,
-      sip_lan: dev.sip_lan,
-      sip_group: apiResult.sip_group,
-      type: 'Akuvox Device',
-    });
-  });
-  return contacts;
-};
-*/
 
 // ------- Dynamic contact list via get_contact_list (LAN hub / WAN cloud) -------
 const CONTACT_REQUEST_ID = 'c45e846ca23ab42c9ae469d988ae32a96';
@@ -211,8 +136,9 @@ async function requestPermissionsIfNeeded() {
   return true;
 }
 
-export default function SdkContactScreen({ navigation, route }) {
+export default function ContactsScreen({ navigation, route }) {
   const { getActiveLanToken, getActiveWanToken } = useAuth();
+  const bottomSpacing = useBottomSpacing();
   const [sipStatus, setSipStatus] = useState(null);
   const [selectedContact, setSelectedContact] = useState(null);
   const [modalVisible, setModalVisible] = useState(false);
@@ -336,25 +262,6 @@ export default function SdkContactScreen({ navigation, route }) {
   }, []);
   // ---------------------------------------------------------------
 
-  const loadTransport = async () => {
-    try {
-      const t = await AsyncStorage.getItem('registeredTransport');
-      const m = await AsyncStorage.getItem('registeredMockup');
-      if (t === 'lan' || t === 'wan') {
-        setRegisteredTransport(t);
-      } else {
-        setRegisteredTransport(null);
-      }
-      if (m === MOCKUP_OPTIONS.MOCKUP_1 || m === MOCKUP_OPTIONS.MOCKUP_2) {
-        setRegisteredMockup(m);
-      } else {
-        setRegisteredMockup(null);
-      }
-    } catch (e) {
-      console.warn('[Contacts] Failed to load registeredTransport:', e);
-    }
-  };
-
   const isTransportReady = () => {
     const transportReady = sipStatus === 2 && registeredTransport === selectedTransport;
     if (!transportReady) return false;
@@ -362,50 +269,54 @@ export default function SdkContactScreen({ navigation, route }) {
     return registeredMockup === selectedMockup;
   };
 
-  // Keep transport synced when this screen regains focus (after user switches LAN/WAN in SmartScreen).
+  // Keep transport + SIP status synced while this screen is focused, so a LAN/WAN
+  // switch made in SmartScreen can't leave a stale "ready" state behind.
+  //
+  // The re-sync is guarded by an in-flight flag: getSipStatus() reaches into the
+  // Akuvox SDK, which can block while a call is being torn down. Without the
+  // guard, ticks queued up on the single native-modules thread and saturated the
+  // bridge — which froze this screen after a few calls. The onSipRegStatus
+  // listener above is the primary signal; this slower poll is just a safety net.
   useFocusEffect(
     React.useCallback(() => {
-      loadTransport();
-      // Also refresh the current SIP line status on focus
-      Akuvox.getSipStatus().then(setSipStatus).catch(() => {});
+      let cancelled = false;
+      let inFlight = false;
+
+      const syncExpectedTransport = async () => {
+        if (inFlight || cancelled) return;
+        inFlight = true;
+        try {
+          const [storedTransport, storedMockup] = await Promise.all([
+            AsyncStorage.getItem('registeredTransport'),
+            AsyncStorage.getItem('registeredMockup'),
+          ]);
+          const currentSipStatus = await Akuvox.getSipStatus();
+          if (cancelled) return;
+
+          setSipStatus(currentSipStatus);
+          setRegisteredTransport(
+            storedTransport === 'lan' || storedTransport === 'wan' ? storedTransport : null
+          );
+          setRegisteredMockup(
+            storedMockup === MOCKUP_OPTIONS.MOCKUP_1 || storedMockup === MOCKUP_OPTIONS.MOCKUP_2
+              ? storedMockup
+              : null
+          );
+        } catch (_) {
+        } finally {
+          inFlight = false;
+        }
+      };
+
+      syncExpectedTransport();
+      const timer = setInterval(syncExpectedTransport, 4000);
+
+      return () => {
+        cancelled = true;
+        clearInterval(timer);
+      };
     }, [])
   );
-
-  useEffect(() => {
-    let mounted = true;
-    let timer = null;
-
-    const syncExpectedTransport = async () => {
-      try {
-        const storedTransport = await AsyncStorage.getItem('registeredTransport');
-        const storedMockup = await AsyncStorage.getItem('registeredMockup');
-        const currentSipStatus = await Akuvox.getSipStatus();
-        if (!mounted) return;
-
-        setSipStatus(currentSipStatus);
-        if (storedTransport === 'lan' || storedTransport === 'wan') {
-          setRegisteredTransport(storedTransport);
-        }
-        if (storedMockup === MOCKUP_OPTIONS.MOCKUP_1 || storedMockup === MOCKUP_OPTIONS.MOCKUP_2) {
-          setRegisteredMockup(storedMockup);
-        }
-      } catch (_) {}
-    };
-
-    // Quick resync loop when entering SdkTest helps avoid calling during mode switches.
-    syncExpectedTransport();
-    timer = setInterval(syncExpectedTransport, 1500);
-
-    return () => {
-      mounted = false;
-      if (timer) clearInterval(timer);
-    };
-  }, []);
-
-  // Optionally poll or fetch SIP status to show user feedback
-  useEffect(() => {
-    Akuvox.getSipStatus().then(setSipStatus).catch(() => {});
-  }, []);
 
   const selectedMockupLabel = formatMockupLabel(selectedMockup);
   const activeTransportLabel = registeredTransport ? registeredTransport.toUpperCase() : 'None';
@@ -464,8 +375,8 @@ export default function SdkContactScreen({ navigation, route }) {
     ]);
   };
 
-  // Contact Call Actions
-  const handleMakeAudioCall = async (contact) => {
+  // Contact Call Actions — callVideoMode: 0 = audio, 1 = video.
+  const placeCall = async (contact, callVideoMode) => {
     const effectiveTransport = registeredTransport || selectedTransport;
     if (!effectiveTransport) {
       Alert.alert('Not Registered', 'Please go to Smart page and choose LAN or WAN to register SIP.');
@@ -497,65 +408,14 @@ export default function SdkContactScreen({ navigation, route }) {
       return;
     }
 
-    console.log('[Contacts] Audio call target:', {
+    console.log('[Contacts] Call target:', {
+      mode: callVideoMode === 0 ? 'audio' : 'video',
       transport: effectiveTransport,
       sipToCall,
       sipCandidates,
       contact: contact?.name,
     });
-    Akuvox.makeCall(sipToCall, contact.name, 0); // 0 for audio call
-    setModalVisible(false);
-    
-    // Immediately navigate to ActiveCallScreen in Outgoing mode
-    navigation.navigate('ActiveCallScreen', {
-      callId: 'dialing',
-      remoteName: contact.name,
-      isOutgoing: true,
-      dialTargets: sipCandidates,
-      dialTargetIndex: 0,
-      callVideoMode: 0,
-    });
-  };
-
-  const handleMakeVideoCall = async (contact) => {
-    const effectiveTransport = registeredTransport || selectedTransport;
-    if (!effectiveTransport) {
-      Alert.alert('Not Registered', 'Please go to Smart page and choose LAN or WAN to register SIP.');
-      return;
-    }
-    if (!isTransportReady()) {
-      Alert.alert(
-        'Transport Not Ready',
-        `Expected ${selectedTransport.toUpperCase()} on ${selectedMockup}. Current: ${registeredTransport ? registeredTransport.toUpperCase() : 'none'} on ${registeredMockup || 'none'}. Please wait for SmartScreen registration and try again.`
-      );
-      return;
-    }
-    if (sipStatus !== 2) {
-      Alert.alert(
-        'SIP Not Ready',
-        `SIP line is ${sipStatus === 1 ? 'still registering' : sipStatus === 3 ? 'registration failed' : 'not ready'}. Please wait a moment and try again.`
-      );
-      return;
-    }
-    const permissionsGranted = await requestPermissionsIfNeeded();
-    if (!permissionsGranted) {
-      Alert.alert('Permission Denied', 'Camera and microphone permissions are required for calls.');
-      return;
-    }
-    const sipCandidates = getSipCandidatesForContact(contact);
-    const sipToCall = sipCandidates[0];
-    if (!sipToCall) {
-      Alert.alert('Missing SIP', `No valid SIP target found for ${contact?.name || 'contact'}.`);
-      return;
-    }
-
-    console.log('[Contacts] Video call target:', {
-      transport: effectiveTransport,
-      sipToCall,
-      sipCandidates,
-      contact: contact?.name,
-    });
-    Akuvox.makeCall(sipToCall, contact.name, 1); // 1 for video call
+    Akuvox.makeCall(sipToCall, contact.name, callVideoMode);
     setModalVisible(false);
 
     // Immediately navigate to ActiveCallScreen in Outgoing mode
@@ -565,9 +425,12 @@ export default function SdkContactScreen({ navigation, route }) {
       isOutgoing: true,
       dialTargets: sipCandidates,
       dialTargetIndex: 0,
-      callVideoMode: 1,
+      callVideoMode,
     });
   };
+
+  const handleMakeAudioCall = (contact) => placeCall(contact, 0);
+  const handleMakeVideoCall = (contact) => placeCall(contact, 1);
 
   // List Item Render
   const renderContactItem = ({ item }) => {
@@ -720,7 +583,10 @@ export default function SdkContactScreen({ navigation, route }) {
         keyExtractor={(item, index) => String(item.id || index)}
         renderItem={renderContactItem}
         ItemSeparatorComponent={() => <View style={styles.separator} />}
-        contentContainerStyle={contacts.length === 0 ? styles.listEmptyContainer : styles.listContent}
+        contentContainerStyle={[
+          contacts.length === 0 ? styles.listEmptyContainer : styles.listContent,
+          { paddingBottom: bottomSpacing },
+        ]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
@@ -754,10 +620,6 @@ export default function SdkContactScreen({ navigation, route }) {
           )
         }
       />
-      {sipStatus !== null && (
-        <Text style={styles.sipStatus}>SIP Status: {sipStatus}</Text>
-      )}
-
       {modalVisible && selectedContact && <CallOptionsModal />}
     </SafeAreaView>
   );
@@ -783,8 +645,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 12,
     elevation: 3,
-    borderBottomWidth: 1,
-    borderColor: '#efe5ff',
   },
   headerTitle: {
     fontSize: 22,
@@ -1014,14 +874,6 @@ const styles = StyleSheet.create({
   transportStateWaiting: {
     color: '#8b6a00',
   },
-  sipStatus: {
-    marginTop: 10,
-    marginBottom: 14,
-    fontSize: 13,
-    color: '#6f4bd8',
-    textAlign: 'center',
-    fontWeight: '700',
-  },
   modalBackground: {
     flex: 1,
     backgroundColor: 'rgba(83,53,176,0.26)',
@@ -1098,109 +950,5 @@ const styles = StyleSheet.create({
     color: '#6246bb',
     fontWeight: '700',
     fontSize: 16,
-  },
-  incomingModalBg: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    justifyContent: 'flex-start',
-    paddingTop: 60,
-    alignItems: 'center',
-  },
-  incomingModalContainer: {
-    backgroundColor: '#1c1c1e',
-    borderRadius: 24,
-    padding: 32,
-    width: '90%',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.5,
-    shadowRadius: 20,
-  },
-  incomingTitle: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: '#ffffff',
-    marginBottom: 8,
-  },
-  incomingFrom: {
-    fontSize: 16,
-    color: '#a1a1aa',
-    marginBottom: 24,
-  },
-  incomingBtnRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    width: '100%',
-  },
-  acceptBtn: {
-    flex: 1,
-    backgroundColor: '#34c759',
-    paddingVertical: 16,
-    borderRadius: 16,
-    marginRight: 8,
-    alignItems: 'center',
-  },
-  acceptBtnText: {
-    color: '#fff',
-    fontWeight: '800',
-    fontSize: 16,
-  },
-  rejectBtn: {
-    flex: 1,
-    backgroundColor: '#ff3b30',
-    paddingVertical: 16,
-    borderRadius: 16,
-    marginLeft: 8,
-    alignItems: 'center',
-  },
-  rejectBtnText: {
-    color: '#fff',
-    fontWeight: '800',
-    fontSize: 16,
-  },
-  videoCallOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#000',
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 100,
-  },
-  remoteVideo: {
-    width: '100%',
-    height: '100%',
-    backgroundColor: '#000',
-  },
-  localVideo: {
-    position: 'absolute',
-    width: 120,
-    height: 160,
-    right: 20,
-    top: 60,
-    backgroundColor: '#111',
-    borderRadius: 12,
-    overflow: 'hidden',
-    zIndex: 101,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
-  },
-  endCallButton: {
-    position: 'absolute',
-    bottom: 50,
-    alignSelf: 'center',
-    backgroundColor: '#ff3b30',
-    width: 70,
-    height: 70,
-    borderRadius: 35,
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 102,
-  },
-  endCallText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 14,
   },
 });

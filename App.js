@@ -1,10 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
-import { View, Alert } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { NativeEventEmitter, NativeModules } from 'react-native';
+import { View, NativeEventEmitter, NativeModules } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import AuthNavigator from './app/navigation/AuthNavigator';
-import AppNavigator from './app/navigation/AppNavigator';
 import { StoreProvider } from './app/context/StoreContext';
 import { AuthProvider } from './app/context/AuthContext';
 import IncomingCallModal from './app/components/CallUI/IncomingCallModal';
@@ -14,27 +12,12 @@ const { Akuvox } = NativeModules;
 const eventEmitter = new NativeEventEmitter(Akuvox);
 
 export default function App() {
-  /*
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-
-
-
-  useEffect(() => {
-    const checkAuthStatus = async () => {
-      const userToken = await AsyncStorage.getItem('userToken');
-      //setIsLoggedIn(!!userToken);
-    };
-
-    checkAuthStatus();
-  }, []);
-  */
   const [incomingCallState, setIncomingCallState] = useState(null);
 
-
-  // 🔔 Listen for incoming calls
+  // Listen for incoming calls
   useEffect(() => {
     const subscription = eventEmitter.addListener('onIncomingCall', (data) => {
-      console.log("📞 Incoming call intercepted:", data);
+      console.log('📞 Incoming call intercepted:', data);
       setIncomingCallState(data);
     });
 
@@ -51,7 +34,7 @@ export default function App() {
   // Recover an incoming call that arrived while the JS runtime wasn't running
   // (e.g. the app was cold-started by tapping the full-screen call notification).
   useEffect(() => {
-    if (typeof Akuvox.getPendingIncomingCall !== 'function') return;
+    if (typeof Akuvox?.getPendingIncomingCall !== 'function') return;
     Akuvox.getPendingIncomingCall()
       .then((pending) => {
         if (pending && typeof pending.callId === 'number' && pending.callId > 0) {
@@ -87,31 +70,33 @@ export default function App() {
       } else {
         Akuvox.answerCall(incomingCallState.callId);
       }
-      navigationRef.navigate('ActiveCallScreen', { 
+      navigationRef.navigate('ActiveCallScreen', {
         callId: incomingCallState.callId,
-        remoteName: incomingCallState.remoteDisplayName || incomingCallState.remoteUserName
+        remoteName: incomingCallState.remoteDisplayName || incomingCallState.remoteUserName,
+        callVideoMode,
       });
       setIncomingCallState(null);
     }
   };
 
-
   return (
-    <StoreProvider>
-      <AuthProvider>
-        <NavigationContainer ref={navigationRef}>
-          <View style={{ flex: 1 }}>
-            {/*{isLoggedIn ? <AppNavigator /> : <AuthNavigator />}*/}
-            <AuthNavigator />
-          </View>
-        </NavigationContainer>
-        <IncomingCallModal 
-          visible={!!incomingCallState}
-          callerName={incomingCallState?.remoteDisplayName || incomingCallState?.remoteUserName}
-          onAccept={handleAccept}
-          onReject={handleReject}
-        />
-      </AuthProvider>
-    </StoreProvider>
+    <SafeAreaProvider>
+      <StoreProvider>
+        <AuthProvider>
+          <NavigationContainer ref={navigationRef}>
+            <View style={{ flex: 1 }}>
+              <AuthNavigator />
+            </View>
+          </NavigationContainer>
+          <IncomingCallModal
+            visible={!!incomingCallState}
+            callerName={incomingCallState?.remoteDisplayName || incomingCallState?.remoteUserName}
+            isVideo={incomingCallState?.callVideoMode !== 0}
+            onAccept={handleAccept}
+            onReject={handleReject}
+          />
+        </AuthProvider>
+      </StoreProvider>
+    </SafeAreaProvider>
   );
 }

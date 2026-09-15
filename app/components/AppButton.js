@@ -1,5 +1,5 @@
-import React,{useContext} from "react";
-import { View, StyleSheet, Text, TouchableOpacity,I18nManager } from "react-native";
+import React from "react";
+import { View, StyleSheet, Text, TouchableOpacity } from "react-native";
 import useColors from '../hooks/useColors'; // Adjust the path to where you saved useColors.js
 
 function AppButton({ 

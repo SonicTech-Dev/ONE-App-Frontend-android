@@ -1,76 +1,161 @@
-import React, { useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Animated, TouchableOpacity, Dimensions } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  Animated,
+  Easing,
+  TouchableOpacity,
+  StatusBar,
+  useWindowDimensions,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import LinearGradient from 'react-native-linear-gradient';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 
-const { width, height } = Dimensions.get('window');
+const getInitials = (name) => {
+  const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return null;
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+};
 
-const IncomingCallModal = ({ visible, callerName, onAccept, onReject }) => {
-  const pulseAnim = useRef(new Animated.Value(1)).current;
-  const slideAnim = useRef(new Animated.Value(-height)).current; // Slide down from top
+const IncomingCallModal = ({ visible, callerName, isVideo = true, onAccept, onReject }) => {
+  const insets = useSafeAreaInsets();
+  const { height } = useWindowDimensions();
+  // Kept mounted through the dismiss animation so the exit transition is visible.
+  const [isMounted, setIsMounted] = useState(visible);
+  const slideAnim = useRef(new Animated.Value(-height)).current;
+  const haloAnim = useRef(new Animated.Value(0)).current;
+  const acceptAnim = useRef(new Animated.Value(1)).current;
+  const initials = getInitials(callerName);
 
   useEffect(() => {
     if (visible) {
-      // Slide in animation
+      setIsMounted(true);
+      slideAnim.setValue(-height);
       Animated.spring(slideAnim, {
         toValue: 0,
-        friction: 6,
-        tension: 40,
+        friction: 9,
+        tension: 52,
         useNativeDriver: true,
       }).start();
 
-      // Pulsing effect for the caller avatar
-      Animated.loop(
+      haloAnim.setValue(0);
+      const halo = Animated.loop(
+        Animated.timing(haloAnim, {
+          toValue: 1,
+          duration: 2200,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        })
+      );
+
+      const nudge = Animated.loop(
         Animated.sequence([
-          Animated.timing(pulseAnim, {
-            toValue: 1.15,
-            duration: 800,
+          Animated.timing(acceptAnim, {
+            toValue: 1.09,
+            duration: 700,
+            easing: Easing.inOut(Easing.ease),
             useNativeDriver: true,
           }),
-          Animated.timing(pulseAnim, {
+          Animated.timing(acceptAnim, {
             toValue: 1,
-            duration: 800,
+            duration: 700,
+            easing: Easing.inOut(Easing.ease),
             useNativeDriver: true,
           }),
         ])
-      ).start();
-    } else {
-      // Slide out animation
-      Animated.timing(slideAnim, {
-        toValue: -height,
-        duration: 300,
-        useNativeDriver: true,
-      }).start();
-      pulseAnim.stopAnimation();
-    }
-  }, [visible]);
+      );
 
-  if (!visible) return null;
+      halo.start();
+      nudge.start();
+
+      return () => {
+        halo.stop();
+        nudge.stop();
+      };
+    }
+
+    Animated.timing(slideAnim, {
+      toValue: -height,
+      duration: 240,
+      easing: Easing.in(Easing.cubic),
+      useNativeDriver: true,
+    }).start(({ finished }) => {
+      if (finished) setIsMounted(false);
+    });
+    return undefined;
+  }, [visible, height, slideAnim, haloAnim, acceptAnim]);
+
+  if (!isMounted) return null;
+
+  const haloScale = haloAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 2.1] });
+  const haloOpacity = haloAnim.interpolate({ inputRange: [0, 0.55, 1], outputRange: [0.5, 0.2, 0] });
 
   return (
     <Animated.View style={[styles.overlay, { transform: [{ translateY: slideAnim }] }]}>
-      {/* Blurred / Dark gradient background simulation */}
-      <View style={styles.backgroundDimmer} />
+      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
+      <LinearGradient
+        colors={['#2b2054', '#161a30', '#05060b']}
+        start={{ x: 0.15, y: 0 }}
+        end={{ x: 0.85, y: 1 }}
+        style={StyleSheet.absoluteFill}
+      />
 
-      <View style={styles.contentContainer}>
-        <View style={styles.topSection}>
-          <Text style={styles.titleText}>Incoming Call</Text>
-          <Animated.View style={[styles.avatarContainer, { transform: [{ scale: pulseAnim }] }]}>
-            <Ionicons name="person" size={60} color="#fff" />
-          </Animated.View>
-          <Text style={styles.callerName}>{callerName || 'Unknown Caller'}</Text>
-          <Text style={styles.subtitleText}>AkuBela Smart Panel</Text>
+      <View style={[styles.content, { paddingTop: insets.top + 68, paddingBottom: insets.bottom + 56 }]}>
+        <View style={styles.identity}>
+          <View style={styles.badge}>
+            <Ionicons name={isVideo ? 'videocam' : 'call'} size={13} color="#c9b8ff" />
+            <Text style={styles.badgeText}>{isVideo ? 'Incoming video call' : 'Incoming call'}</Text>
+          </View>
+
+          <View style={styles.avatarStage}>
+            <Animated.View
+              style={[styles.halo, { opacity: haloOpacity, transform: [{ scale: haloScale }] }]}
+              pointerEvents="none"
+            />
+            <View style={styles.avatar}>
+              {initials ? (
+                <Text style={styles.avatarInitials}>{initials}</Text>
+              ) : (
+                <Ionicons name="person" size={58} color="#ffffff" />
+              )}
+            </View>
+          </View>
+
+          <Text style={styles.callerName} numberOfLines={2}>{callerName || 'Unknown Caller'}</Text>
+          <Text style={styles.subtitle}>ONE Development</Text>
         </View>
 
-        <View style={styles.actionRow}>
-          <TouchableOpacity style={[styles.actionButton, styles.rejectButton]} onPress={onReject} activeOpacity={0.8}>
-            <Ionicons name="call" size={32} color="#fff" style={{ transform: [{ rotate: '135deg' }] }} />
-            <Text style={styles.buttonText}>Decline</Text>
-          </TouchableOpacity>
+        <View style={styles.actions}>
+          <View style={styles.action}>
+            <TouchableOpacity
+              style={[styles.actionButton, styles.declineButton]}
+              onPress={onReject}
+              activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel="Decline call"
+            >
+              <Ionicons name="call" size={30} color="#ffffff" style={styles.declineIcon} />
+            </TouchableOpacity>
+            <Text style={styles.actionLabel}>Decline</Text>
+          </View>
 
-          <TouchableOpacity style={[styles.actionButton, styles.acceptButton]} onPress={onAccept} activeOpacity={0.8}>
-            <Ionicons name="call" size={32} color="#fff" />
-            <Text style={styles.buttonText}>Accept</Text>
-          </TouchableOpacity>
+          <View style={styles.action}>
+            <Animated.View style={{ transform: [{ scale: acceptAnim }] }}>
+              <TouchableOpacity
+                style={[styles.actionButton, styles.acceptButton]}
+                onPress={onAccept}
+                activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityLabel="Accept call"
+              >
+                <Ionicons name={isVideo ? 'videocam' : 'call'} size={30} color="#ffffff" />
+              </TouchableOpacity>
+            </Animated.View>
+            <Text style={styles.actionLabel}>Accept</Text>
+          </View>
         </View>
       </View>
     </Animated.View>
@@ -79,105 +164,126 @@ const IncomingCallModal = ({ visible, callerName, onAccept, onReject }) => {
 
 const styles = StyleSheet.create({
   overlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    width: width,
-    height: height,
-    zIndex: 99999,
-  },
-  backgroundDimmer: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(20, 25, 30, 0.95)', // Deep frosted tech look
+    zIndex: 99999,
+    elevation: 99999,
   },
-  contentContainer: {
+  content: {
     flex: 1,
     justifyContent: 'space-between',
-    paddingTop: 100,
-    paddingBottom: 80,
+    alignItems: 'center',
+    paddingHorizontal: 28,
+  },
+  identity: {
     alignItems: 'center',
   },
-  topSection: {
+  badge: {
+    flexDirection: 'row',
     alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(201,184,255,0.25)',
   },
-  titleText: {
-    fontSize: 22,
-    color: 'rgba(255,255,255,0.7)',
-    fontWeight: '500',
+  badgeText: {
+    marginLeft: 7,
+    color: '#c9b8ff',
+    fontSize: 12,
+    fontWeight: '700',
     letterSpacing: 1,
-    marginBottom: 40,
+    textTransform: 'uppercase',
   },
-  avatarContainer: {
-    width: 130,
-    height: 130,
-    borderRadius: 65,
-    backgroundColor: 'rgba(50, 210, 214, 0.2)', // Pulse ring
+  avatarStage: {
+    width: 190,
+    height: 190,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 46,
+    marginBottom: 30,
+  },
+  halo: {
+    position: 'absolute',
+    width: 136,
+    height: 136,
+    borderRadius: 68,
+    backgroundColor: 'rgba(138,104,240,0.28)',
+    borderWidth: 1,
+    borderColor: 'rgba(201,184,255,0.4)',
+  },
+  avatar: {
+    width: 136,
+    height: 136,
+    borderRadius: 68,
+    backgroundColor: 'rgba(111,75,216,0.92)',
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#32d2d6',
-    marginBottom: 24,
-    shadowColor: '#32d2d6',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.8,
-    shadowRadius: 20,
-    elevation: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.24)',
+  },
+  avatarInitials: {
+    color: '#ffffff',
+    fontSize: 46,
+    fontWeight: '700',
+    letterSpacing: 1,
   },
   callerName: {
-    fontSize: 32,
+    fontSize: 30,
     color: '#ffffff',
     fontWeight: '700',
-    marginBottom: 8,
-    letterSpacing: 0.5,
+    letterSpacing: 0.3,
+    textAlign: 'center',
   },
-  subtitleText: {
-    fontSize: 16,
-    color: '#32d2d6',
-    fontWeight: '600',
+  subtitle: {
+    marginTop: 9,
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.5)',
+    fontWeight: '700',
     textTransform: 'uppercase',
-    letterSpacing: 2,
+    letterSpacing: 2.4,
   },
-  actionRow: {
+  actions: {
     flexDirection: 'row',
     width: '100%',
     justifyContent: 'space-evenly',
-    paddingHorizontal: 20,
+    alignItems: 'flex-start',
   },
-  actionButton: {
-    width: 90,
+  action: {
     alignItems: 'center',
   },
-  rejectButton: {
-    paddingVertical: 20,
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: '#ff3b30',
+  actionButton: {
+    width: 78,
+    height: 78,
+    borderRadius: 39,
     justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 10,
+  },
+  declineButton: {
+    backgroundColor: '#ff3b30',
     shadowColor: '#ff3b30',
-    shadowOpacity: 0.4,
-    shadowRadius: 10,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.45,
+    shadowRadius: 16,
+  },
+  declineIcon: {
+    transform: [{ rotate: '135deg' }],
   },
   acceptButton: {
-    paddingVertical: 20,
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: '#34c759',
-    justifyContent: 'center',
-    shadowColor: '#34c759',
-    shadowOpacity: 0.4,
-    shadowRadius: 10,
-    elevation: 8,
+    backgroundColor: '#22c55e',
+    shadowColor: '#22c55e',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.45,
+    shadowRadius: 16,
   },
-  buttonText: {
-    color: '#fff',
-    marginTop: 12,
-    fontSize: 16,
-    fontWeight: '600',
-    letterSpacing: 0.5,
-  }
+  actionLabel: {
+    marginTop: 14,
+    color: 'rgba(255,255,255,0.82)',
+    fontSize: 14,
+    fontWeight: '700',
+    letterSpacing: 0.4,
+  },
 });
 
 export default IncomingCallModal;

@@ -464,6 +464,97 @@ public class AkuvoxModule extends ReactContextBaseJavaModule {
         MediaManager.getInstance(activityOrApp()).answerCall(callId, callVideoMode);
     }
 
+    @ReactMethod
+    public void setMute(boolean muted, Promise promise) {
+        // SDK-level mic mute, so the Akuvox audio pipeline stops sending audio
+        // rather than relying on a global device mute that VoIP capture can bypass.
+        try {
+            int result = MediaManager.getInstance(activityOrApp()).setMute(muted);
+            Log.d("SIP", "setMute(" + muted + ") returned: " + result);
+            promise.resolve(result == 0);
+        } catch (Exception e) {
+            Log.w("SIP", "setMute failed: " + e.getMessage());
+            promise.reject("MUTE_ERROR", e.getMessage());
+        }
+    }
+
+    private android.media.AudioManager audioManager() {
+        return (android.media.AudioManager)
+            reactContext.getSystemService(android.content.Context.AUDIO_SERVICE);
+    }
+
+    /** Finds a routable communication device of the given type (API 31+). */
+    @androidx.annotation.RequiresApi(api = android.os.Build.VERSION_CODES.S)
+    private android.media.AudioDeviceInfo findCommunicationDevice(
+            android.media.AudioManager am, int type) {
+        for (android.media.AudioDeviceInfo device : am.getAvailableCommunicationDevices()) {
+            if (device.getType() == type) return device;
+        }
+        return null;
+    }
+
+    @ReactMethod
+    public void setSpeakerOn(boolean speakerOn, Promise promise) {
+        // The SDK has no speaker API, so audio is routed via AudioManager.
+        // setSpeakerphoneOn() is deprecated from API 31 and does not actually
+        // re-route on Android 13/14, so use setCommunicationDevice() there and
+        // keep the legacy call only as the pre-31 path. Always resolve with the
+        // state read back from the OS so the UI can't drift from reality.
+        try {
+            android.media.AudioManager am = audioManager();
+            if (am == null) {
+                promise.reject("SPEAKER_ERROR", "AudioManager unavailable");
+                return;
+            }
+
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                if (speakerOn) {
+                    android.media.AudioDeviceInfo speaker = findCommunicationDevice(
+                        am, android.media.AudioDeviceInfo.TYPE_BUILTIN_SPEAKER);
+                    if (speaker != null) {
+                        am.setCommunicationDevice(speaker);
+                    }
+                } else {
+                    // Prefer an explicit earpiece route; fall back to letting the
+                    // platform pick (headset/Bluetooth stay respected either way).
+                    android.media.AudioDeviceInfo earpiece = findCommunicationDevice(
+                        am, android.media.AudioDeviceInfo.TYPE_BUILTIN_EARPIECE);
+                    if (earpiece != null) {
+                        am.setCommunicationDevice(earpiece);
+                    } else {
+                        am.clearCommunicationDevice();
+                    }
+                }
+            } else {
+                am.setSpeakerphoneOn(speakerOn);
+            }
+
+            promise.resolve(readSpeakerState(am));
+        } catch (Exception e) {
+            Log.w("SIP", "setSpeakerOn failed: " + e.getMessage());
+            promise.reject("SPEAKER_ERROR", e.getMessage());
+        }
+    }
+
+    private boolean readSpeakerState(android.media.AudioManager am) {
+        if (am == null) return false;
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+            android.media.AudioDeviceInfo current = am.getCommunicationDevice();
+            return current != null
+                && current.getType() == android.media.AudioDeviceInfo.TYPE_BUILTIN_SPEAKER;
+        }
+        return am.isSpeakerphoneOn();
+    }
+
+    @ReactMethod
+    public void isSpeakerOn(Promise promise) {
+        try {
+            promise.resolve(readSpeakerState(audioManager()));
+        } catch (Exception e) {
+            promise.resolve(false);
+        }
+    }
+
     // ---------------- SMART LOCK LAN MONITORING FLOW ---------------- //
 
     @ReactMethod

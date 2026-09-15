@@ -2,9 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Modal, Animated, Easing } from 'react-native';
 import MenuHeader from './MenuHeader';
 import useColors from '../../hooks/useColors';
-import Ionicons from 'react-native-vector-icons/Ionicons';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
-import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
 const MenuDrawer = ({ visible, onClose, items, onProfilePress }) => {
   const translateX = React.useRef(new Animated.Value(-300)).current; // For drawer sliding
@@ -107,10 +105,14 @@ const MenuDrawer = ({ visible, onClose, items, onProfilePress }) => {
           </TouchableOpacity> */}
           <View style={{marginTop:10}}/>
           {items.map((item, index) => (
-            <React.Fragment key={index}>
+            <React.Fragment key={item.id ?? index}>
             <TouchableOpacity
               onPress={item.onPress}
-              style={styles.drawerItemRow}
+              disabled={item.comingSoon}
+              activeOpacity={item.comingSoon ? 1 : 0.6}
+              accessibilityRole="button"
+              accessibilityState={{ disabled: !!item.comingSoon }}
+              style={[styles.drawerItemRow, item.comingSoon && styles.drawerItemRowDisabled]}
             >
               <View style={styles.drawerItemIcon}>
                 {item.Icon}
@@ -122,6 +124,9 @@ const MenuDrawer = ({ visible, onClose, items, onProfilePress }) => {
               >
                 {item.name}
               </Text>
+              {/* Marks entries that have no screen behind them yet, so they read as
+                  planned rather than broken. */}
+              {item.comingSoon ? <Text style={styles.soonBadge}>Soon</Text> : null}
               </TouchableOpacity>
               <View style={[styles.drawerDivider, { backgroundColor: colors.medium }]}/>
             </React.Fragment>
@@ -176,6 +181,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 10,
     paddingVertical: 8,
+  },
+  drawerItemRowDisabled: {
+    opacity: 0.45,
+  },
+  soonBadge: {
+    marginLeft: 'auto',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+    overflow: 'hidden',
+    backgroundColor: '#f3edff',
+    color: '#6f4bd8',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
   },
   drawerItemIcon: {
     marginRight: 12,

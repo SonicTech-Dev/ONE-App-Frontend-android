@@ -1,5 +1,5 @@
 import React from 'react';
-import { ScrollView, View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { ScrollView, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import useColors from '../../hooks/useColors';
 
 const Tabs = ({ tabs, activeTab, onTabChange, disabled = false }) => {

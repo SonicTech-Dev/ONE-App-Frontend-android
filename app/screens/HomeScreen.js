@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
 import { View, ScrollView, FlatList, Text, TouchableOpacity, Image, StyleSheet, Alert } from 'react-native';
+import { CommonActions } from '@react-navigation/native';
 import useColors from '../hooks/useColors';
+import { useAuth } from '../context/AuthContext';
+import { useBottomSpacing } from '../navigation/tabBarLayout';
 import Header from '../components/Home/Header';
 import MenuDrawer from '../components/Home/MenuDrawer';
 import Screen from '../components/Screen';
@@ -11,10 +14,11 @@ import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import FontAwesome from 'react-native-vector-icons/FontAwesome';
 import NotificationsModal from '../components/Home/NotificationsModal';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const HomeScreen = ({navigation}) => {
   const colors = useColors();
+  const { logout } = useAuth();
+  const bottomSpacing = useBottomSpacing();
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [loading, setLoading]=useState(false)
   const [notificationModalVisible, setNotificationModalVisible] = useState(false);
@@ -27,7 +31,8 @@ const HomeScreen = ({navigation}) => {
         Icon: <MaterialIcons name="badge" size={26} color={colors.primary} />, // Explicitly provide an icon JSX element
         onPress: () => {
           // setIsDrawerOpen(false);
-        }
+        },
+        comingSoon: true
       },
       {
         id: 2,
@@ -35,7 +40,8 @@ const HomeScreen = ({navigation}) => {
         Icon: <MaterialCommunityIcons name="badge-account" size={26} color={colors.primary} />, // Explicitly provide an icon JSX element
         onPress: () => {
           // setIsDrawerOpen(false);
-        }
+        },
+        comingSoon: true
       },
       {
         id: 12,
@@ -52,49 +58,50 @@ const HomeScreen = ({navigation}) => {
         Icon: <Ionicons name="document-text-outline" size={26} color={colors.primary} />, // Explicitly provide an icon JSX element
         onPress: () => {
           // setIsDrawerOpen(false);
-        }
+        },
+        comingSoon: true
       },
       {
         id: 4,
         name: 'Feedback',
         Icon: <MaterialIcons name="feedback" size={26} color={colors.primary} />, // Explicitly provide an icon JSX element
-        onPress: () => {}
+        onPress: () => {},
+        comingSoon: true
       },
       {
         id: 5,
         name: 'Utilities',
         Icon: <Ionicons name="bulb" size={26} color={colors.primary} />, // Explicitly provide an icon JSX element
-        onPress: () => {}
+        onPress: () => {},
+        comingSoon: true
       },
       {
         id: 6,
         name: 'Fees',
         Icon: <MaterialIcons name="account-balance-wallet" size={26} color={colors.primary} />, // Explicitly provide an icon JSX element
-        onPress: () => {}
+        onPress: () => {},
+        comingSoon: true
       },
-      // {
-      //   id: 7,
-      //   name: 'Payments',
-      //   Icon: <MaterialIcons name="account-balance-wallet" size={26} color={colors.primary} />, // Explicitly provide an icon JSX element
-      //   onPress: () => {}
-      // },
       {
         id: 8,
         name: 'Reservations',
         Icon: <Ionicons name="calendar" size={26} color={colors.primary} />, // Explicitly provide an icon JSX element
-        onPress: () => {}
+        onPress: () => {},
+        comingSoon: true
       },
       {
         id: 9,
         name: 'Manage Users',
         Icon: <MaterialCommunityIcons name="account-multiple" size={26} color={colors.primary} />, // Explicitly provide an icon JSX element
-        onPress: () => {}
+        onPress: () => {},
+        comingSoon: true
       },
       {
         id: 10,
         name: 'Manage Properties',
         Icon: <MaterialCommunityIcons name="office-building" size={26} color={colors.primary} />, // Explicitly provide an icon JSX element
-        onPress: () => {}
+        onPress: () => {},
+        comingSoon: true
       },
       {
         id: 11,
@@ -104,19 +111,32 @@ const HomeScreen = ({navigation}) => {
       },
     ];
 
-  const handleLogout =async()=>{
-
-    Alert.alert('Are you sure?',"You'll need to login again to keep using the application", 
+  const handleLogout = async () => {
+    Alert.alert('Are you sure?', "You'll need to login again to keep using the application",
     [
-      { text: 'Log Out',
-      onPress:async()=> {
-        setLoading(true);
-        await AsyncStorage.removeItem('userToken')
-          // navigation.navigate(routes.WELCOME)
-
-          setLoading(false);
-      }},
-      { text: 'Cancel',style:"cancel" },
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Log Out',
+        style: 'destructive',
+        onPress: async () => {
+          setLoading(true);
+          try {
+            // Clear the real auth state, not just the legacy 'userToken' key, then
+            // reset to the welcome screen — previously the navigation was commented
+            // out, so logging out left the user sitting in the app still signed in.
+            await logout();
+            setIsDrawerOpen(false);
+            navigation.dispatch(
+              CommonActions.reset({ index: 0, routes: [{ name: routes.WELCOME }] })
+            );
+          } catch (error) {
+            console.error('[HomeScreen] Logout failed:', error);
+            Alert.alert('Unable to log out', 'Please try again.');
+          } finally {
+            setLoading(false);
+          }
+        },
+      },
     ])
   }
 
@@ -171,13 +191,26 @@ const HomeScreen = ({navigation}) => {
             paddingHorizontal:20,
           }}
         >
-          {quickActions.map((item, index) => (
-            <TouchableOpacity key={item.id} style={styles.navButton(colors)} onPress={item.onPress}>
+          {quickActions.map((item) => (
+            <TouchableOpacity
+              key={item.id}
+              style={[styles.navButton(colors), !item.onPress && styles.navButtonDisabled]}
+              onPress={item.onPress}
+              disabled={!item.onPress}
+              accessibilityRole="button"
+              accessibilityState={{ disabled: !item.onPress }}
+            >
               <Text style={styles.navButtonText}>{item.title}</Text>
             </TouchableOpacity>
           ))}
           </ScrollView>
-        <FlatList data={data} renderItem={renderItem} keyExtractor={(item) => item.id} contentContainerStyle={{paddingHorizontal:20}}/>
+        <FlatList
+          data={data}
+          renderItem={renderItem}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: bottomSpacing }}
+          showsVerticalScrollIndicator={false}
+        />
       
       <MenuDrawer onProfilePress={()=>onAccountDetailsPress()} visible={isDrawerOpen} onClose={() => setIsDrawerOpen(false)} items={drawerItems} />
 
@@ -211,6 +244,10 @@ const styles = StyleSheet.create({
     shadowRadius: 1,
     elevation: 2,
   }),
+  // Quick actions without a destination yet read as inactive rather than broken.
+  navButtonDisabled: {
+    opacity: 0.45,
+  },
   navButtonText: {
     color: '#fff',
     fontFamily:'Arial',
