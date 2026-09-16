@@ -97,19 +97,23 @@ export function AuthProvider({ children }) {
     const text = await response.text();
     const data = safeParseJson(text);
     if (!response.ok || !data?.success) {
+      // AkuBela answers a rejected grant with HTTP 200 and `success: false`, so
+      // the status code alone can't explain a failure — log its actual code and
+      // message. The password is never included; on failure there is no token.
+      console.warn(
+        '[AuthContext] AkuBela token grant rejected for', email,
+        'http=' + response.status,
+        'code=' + (data?.result?.code ?? data?.code ?? 'n/a'),
+        'message=' + (data?.result?.message ?? data?.message ?? text?.slice(0, 200))
+      );
       if (response.status === 400 || response.status === 401 || response.status === 403) {
         throw createAuthError("Invalid username or password.", 'INVALID_CREDENTIALS');
       }
-      throw createAuthError("Unable to sign in right now. Please try again.", 'WAN_TOKEN_FAILED');
+      throw createAuthError("Your account is not yet active on the cloud. Please contact support.", 'WAN_TOKEN_FAILED');
     }
 
     return data.result.access_token;
   }, []);
-
-  const verifyOnlineAccount = useCallback(async (email, password) => {
-    await fetchWanToken(email, password);
-    return true;
-  }, [fetchWanToken]);
 
   const fetchLanToken = useCallback(async (email, password) => {
     const AUTH_URL = LAN_BASE_URL + "/auth";
@@ -229,7 +233,11 @@ export function AuthProvider({ children }) {
     }
 
     if (!response.ok) {
-      throw createAuthError("Unable to sign in right now. Please try again.", 'BACKEND_LOGIN_FAILED');
+      // Distinct wording from the AkuBela failure above, so the alert alone says
+      // which of the two sign-in steps actually broke.
+      const detail = await response.text().catch(() => '');
+      console.warn('[AuthContext] backend /api/login/ failed http=' + response.status, detail?.slice(0, 200));
+      throw createAuthError("Sign in service is unavailable right now. Please try again.", 'BACKEND_LOGIN_FAILED');
     }
 
     const loginData = await response.json().catch(() => ({}));
@@ -272,7 +280,7 @@ export function AuthProvider({ children }) {
   return (
     <AuthContext.Provider value={{ 
       lanToken, wanToken, getActiveLanToken, getActiveWanToken,
-      networkMode, residenceId, authRole, isInitializing, loginLan, loginWan, logout, generateGeneralWanToken, verifyOnlineAccount, updateStoredPassword
+      networkMode, residenceId, authRole, isInitializing, loginLan, loginWan, logout, generateGeneralWanToken, updateStoredPassword
     }}>
       {children}
     </AuthContext.Provider>

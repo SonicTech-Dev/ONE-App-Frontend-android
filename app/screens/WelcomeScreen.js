@@ -20,7 +20,7 @@ export default function WelcomeScreen({ navigation }) {
   const [signInTransport, setSignInTransport] = useState('WAN');
   
   // Use Global Auth Context
-  const { loginLan, loginWan, verifyOnlineAccount } = useAuth();
+  const { loginLan, loginWan } = useAuth();
   
   // Form State
   const [email, setEmail] = useState('');
@@ -94,56 +94,14 @@ export default function WelcomeScreen({ navigation }) {
         data = {};
       }
 
-      const registrationLooksComplete = (
-        data?.family_linked === true ||
-        data?.cloud_created === true ||
-        data?.akubela_registered === true ||
-        data?.provisioned === true ||
-        data?.completed === true
-      );
-
       if (!response.ok) {
         Alert.alert("Registration Failed", data.error || "Unable to complete registration right now.");
         return;
       }
 
-      // The cloud account can take a moment to finish provisioning right after
-      // the backend creates it, so retry a few times before declaring failure.
-      let verifyError = null;
-      for (let attempt = 0; attempt < 3; attempt += 1) {
-        try {
-          await verifyOnlineAccount(email, password);
-          verifyError = null;
-          break;
-        } catch (err) {
-          verifyError = err;
-          if (err?.code === 'INVALID_CREDENTIALS') break; // won't succeed on retry
-          if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 1500));
-        }
-      }
-      if (verifyError) {
-        Alert.alert(
-          "Registration Incomplete",
-          verifyError?.code === 'INVALID_CREDENTIALS'
-            ? "Your account was saved, but the password could not be verified. Please contact support."
-            : "Your account was saved, but setup is not fully completed yet. Please contact support or try again later."
-        );
-        return;
-      }
-
-      if (
-        Object.keys(data || {}).length > 0 &&
-        ['family_linked', 'cloud_created', 'akubela_registered', 'provisioned', 'completed'].some(key => key in (data || {})) &&
-        !registrationLooksComplete
-      ) {
-        Alert.alert(
-          "Registration Incomplete",
-          "Your account was created, but setup is not fully completed yet. Please contact support or try again later."
-        );
-        return;
-      }
-
-      // Success!
+      // The backend only writes the user row after AkuBela confirms the account,
+      // so a 2xx response already means registration finished. Re-checking the
+      // cloud login from here only added a second way to fail after a success.
       Alert.alert("Success", "Account created successfully! You can now sign in.");
       setIsLoginMode(true);
       setPassword('');
