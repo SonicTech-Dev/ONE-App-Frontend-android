@@ -209,13 +209,13 @@ export const MOCKUP_1_DEVICE_CATEGORIES = [
           }},
           { title: 'Flood Sensor Kitchen', location: 'Kitchen', status: 'On', color: '#8e44ad', isOn: false, iconName: 'water' ,library: 'MaterialCommunityIcons',
           lan: {
-            device_id: 'b2cde7130cd1c35cbc2156651d2757ae',
-            ability_id: 'binary_sensor.b9a5b821238f095d4ee0dca7595f7857',
+            device_id: '8b01dbebbaadb0a61bae1ee30eb53392',
+            ability_id: 'binary_sensor.685ea764cd412fa1591a4ee463552af6',
             commandPair: { on: 'turn_on', off: 'turn_off' }
           },
           wan: {
-            device_id: 'da7ac9c74feaf4719a4e1efb073031768',
-            ability_id: 'e8996edcfea8c46609714a6fd457699f8',
+            device_id: 'db75ba614562a4757bc3f137591cb40b2',
+            ability_id: 'e591fb49761b74d3c98cff37e05f2d45c',
             commandPair: { on: 'turn_on', off: 'turn_off' }
           }},
         ],

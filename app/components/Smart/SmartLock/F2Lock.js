@@ -8,13 +8,13 @@ import { controlDevice, deviceStatus as fetchDeviceStatus } from '../SmartScreen
 // without relying on auto-discovery.
 const MANUAL_F2_LOCK_CONFIG = {
   LAN: {
-    device_id: 'b7ab1bc7a91ca0c7467aff8785d8ff6b',
-    ability_id: 'lock.da51a81b4eef38be28040a9c3df9818d',
+    device_id: 'b190ab4ceb3ac0c2a1ec91cc55fe9894',
+    ability_id: 'lock.ab405cbec77e5b79c84e041667c2b1b3',
     commandPair: { on: 'turn_off', off: 'turn_on' },
   },
   WAN: {
-    device_id: 'd1f1c948bb3ac4910b5f26e828c6fb702',
-    ability_id: 'eb331cef8bfc741b0a263b15b4e37559c',
+    device_id: 'd5caf778a74f148bb90e336d954ed2540',
+    ability_id: 'e275caea9191b4891a1c8bbe6a25337b8',
     commandPair: { on: 'lock', off: 'unlock' },
   },
 };
