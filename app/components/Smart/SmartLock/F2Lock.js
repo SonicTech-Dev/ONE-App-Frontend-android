@@ -7,21 +7,41 @@ import { controlDevice, deviceStatus as fetchDeviceStatus } from '../SmartScreen
 // Optional manual mapping for F2 lock. Fill values to force direct control
 // without relying on auto-discovery.
 const MANUAL_F2_LOCK_CONFIG = {
-  LAN: {
-    device_id: 'b190ab4ceb3ac0c2a1ec91cc55fe9894',
-    ability_id: 'lock.ab405cbec77e5b79c84e041667c2b1b3',
-    commandPair: { on: 'turn_off', off: 'turn_on' },
+  mockup1: {
+    LAN: {
+      device_id: 'b190ab4ceb3ac0c2a1ec91cc55fe9894',
+      ability_id: 'lock.ab405cbec77e5b79c84e041667c2b1b3',
+      commandPair: { on: 'turn_off', off: 'turn_on' },
+    },
+    WAN: {
+      device_id: 'd5caf778a74f148bb90e336d954ed2540',
+      ability_id: 'e275caea9191b4891a1c8bbe6a25337b8',
+      commandPair: { on: 'lock', off: 'unlock' },
+    },
   },
-  WAN: {
-    device_id: 'd5caf778a74f148bb90e336d954ed2540',
-    ability_id: 'e275caea9191b4891a1c8bbe6a25337b8',
-    commandPair: { on: 'lock', off: 'unlock' },
+  mockup2: {
+    LAN: {
+      device_id: 'dbbb9014d77c51c3446d21428535e310',
+      ability_id: 'lock.fc60bafe5871fd8ed3e94939985b9dce',
+      commandPair: { on: 'turn_off', off: 'turn_on' },
+    },
+    WAN: {
+      device_id: 'd62c66a25b2914654bf231a78899ea1f7',
+      ability_id: 'ef119baf0d3604b2abaa132f63ad2867b',
+      commandPair: { on: 'lock', off: 'unlock' },
+    },
   },
 };
 
 function normalizeMode(mode) {
   const parsed = String(mode || '').toUpperCase();
   return parsed === 'LAN' || parsed === 'WAN' ? parsed : 'WAN';
+}
+
+function normalizeBatteryPercentage(value) {
+  const percentage = Number.parseFloat(value);
+  if (!Number.isFinite(percentage)) return null;
+  return Math.min(100, Math.max(0, percentage));
 }
 
 function parseLockViewState(deviceStatus, device) {
@@ -95,7 +115,8 @@ function parseLockViewState(deviceStatus, device) {
     const type = String(a.ability_type || a.domain || '').toLowerCase();
     const name = String(a.ability_name || a.name || '').toLowerCase();
     const id = String(a.ability_id || a.id || '').toLowerCase();
-    return type.includes('battery') || name.includes('battery') || id.includes('battery');
+    const attributeType = String(a.attribute?.type || '').toLowerCase();
+    return type.includes('battery') || name.includes('battery') || id.includes('battery') || attributeType === 'battery';
   });
 
   if (batteryAbility && batteryAbility.state !== undefined) {
@@ -195,12 +216,13 @@ export default function F2LockModal({
       };
     }
 
-    const modeConfig = MANUAL_F2_LOCK_CONFIG[selectedOptionFromRoute];
+    const mockupConfig = MANUAL_F2_LOCK_CONFIG[selectedMockup] || MANUAL_F2_LOCK_CONFIG.mockup1;
+    const modeConfig = mockupConfig[selectedOptionFromRoute];
     if (modeConfig?.device_id && modeConfig?.ability_id) {
       return modeConfig;
     }
     return null;
-  }, [route?.params?.manualAbilityId, route?.params?.manualDeviceId, selectedOptionFromRoute]);
+  }, [route?.params?.manualAbilityId, route?.params?.manualDeviceId, selectedMockup, selectedOptionFromRoute]);
 
   const getHeaders = useCallback(async () => {
     const token = selectedOptionFromRoute === 'LAN'
@@ -334,6 +356,8 @@ export default function F2LockModal({
 
   if (isScreenMode) {
     const lockView = parseLockViewState(screenStatus, screenDeviceMeta);
+    const batteryPercentage = normalizeBatteryPercentage(lockView.battery);
+    const batteryColor = batteryPercentage !== null && batteryPercentage <= 20 ? '#d92d20' : '#16805b';
 
     return (
       <Screen style={styles.screenRoot}>
@@ -355,6 +379,28 @@ export default function F2LockModal({
             ) : (
               <>
                 <Text style={styles.infoTitle}>{screenDeviceMeta?.device_name || lockTitle}</Text>
+                <View style={styles.batteryCard}>
+                  <View style={styles.batteryHeader}>
+                    <Text style={styles.batteryLabel}>Lock battery</Text>
+                    <Text style={[styles.batteryPercentage, { color: batteryColor }]}>
+                      {batteryPercentage === null ? '--' : `${batteryPercentage}%`}
+                    </Text>
+                  </View>
+                  <View style={styles.batteryTrack}>
+                    <View
+                      style={[
+                        styles.batteryFill,
+                        {
+                          width: `${batteryPercentage ?? 0}%`,
+                          backgroundColor: batteryColor,
+                        },
+                      ]}
+                    />
+                  </View>
+                  <Text style={styles.batteryHint}>
+                    {batteryPercentage === null ? 'Battery level unavailable' : 'Current battery level'}
+                  </Text>
+                </View>
                 <View style={styles.statusRow}>
                   <Text style={styles.label}>Online Status:</Text>
                   <Text
@@ -411,16 +457,6 @@ export default function F2LockModal({
                   </Text>
                 </View>
 
-                {lockView.battery !== undefined && (
-                  <View style={styles.statusRow}>
-                    <Text style={styles.label}>Battery:</Text>
-                    <Text style={styles.value}>
-                      {lockView.battery !== 'unknown'
-                        ? `${lockView.battery}%`
-                        : 'unknown'}
-                    </Text>
-                  </View>
-                )}
               </>
             )}
           </View>
@@ -665,6 +701,45 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     marginBottom: 8,
     textAlign: 'center',
+  },
+  batteryCard: {
+    backgroundColor: '#f7faf9',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#d7eee4',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 14,
+  },
+  batteryHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 9,
+  },
+  batteryLabel: {
+    color: '#344054',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  batteryPercentage: {
+    fontSize: 20,
+    fontWeight: '800',
+  },
+  batteryTrack: {
+    height: 8,
+    backgroundColor: '#dce9e4',
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  batteryFill: {
+    height: '100%',
+    borderRadius: 8,
+  },
+  batteryHint: {
+    color: '#667085',
+    fontSize: 12,
+    marginTop: 7,
   },
   infoText: {
     fontSize: 14,
