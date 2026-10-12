@@ -268,7 +268,7 @@ export const MOCKUP_1_DEVICE_CATEGORIES = [
       {
         category: 'Entrance',
         items: [
-          { title: 'AC', location: 'Entrance', status: 'off', color: '#ff0000ff', isOn: false, iconName: 'air-conditioner' , library: 'MaterialCommunityIcons',
+          { title: 'Air Condition', location: 'Entrance', status: 'off', color: '#ff0000ff', isOn: false, iconName: 'air-conditioner' , library: 'MaterialCommunityIcons',
           lan: {
             device_id: '0c110500755c_130_11',
             ability_id: 'climate.0c110500755c_130_11',
@@ -562,7 +562,7 @@ export const MOCKUP_2_DEVICE_CATEGORIES = [
       {
         category: 'Entrance',
         items: [
-          { title: 'AC', location: 'Entrance', status: 'off', color: '#ff0000ff', isOn: false, iconName: 'air-conditioner' , library: 'MaterialCommunityIcons',
+          { title: 'Air Condition', location: 'Entrance', status: 'off', color: '#ff0000ff', isOn: false, iconName: 'air-conditioner' , library: 'MaterialCommunityIcons',
           lan: {
             device_id: '0c11052b761c_130_11',
             ability_id: 'climate.0c11052b761c_130_11',

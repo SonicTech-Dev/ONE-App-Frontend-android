@@ -28,8 +28,13 @@ const AC_COMMAND_PAIR = { on: 'turn_on', off: 'turn_off' };
 // Matches "AC" as a standalone, upper-case word ("AC IT Office", "Office AC") but not
 // substrings such as "Space", "Access" or "Ac Remote" product names.
 const AC_NAME_PATTERN = /(^|[\s\-_])AC([\s\-_]|$)/;
+// Also covers "Air Condition", "Air Conditioner", "Air Conditioning" in any case.
+const AIR_CONDITION_PATTERN = /air[\s\-_]*condition/i;
 
-const isAcDevice = (device) => AC_NAME_PATTERN.test(String(device?.device_name || ''));
+const isAcDevice = (device) => {
+  const name = String(device?.device_name || '');
+  return AC_NAME_PATTERN.test(name) || AIR_CONDITION_PATTERN.test(name);
+};
 
 // Device list nests ACs under gateways/panels at arbitrary depth, so walk every level.
 const flattenDevices = (devices, out = []) => {
