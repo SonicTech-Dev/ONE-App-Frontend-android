@@ -9,6 +9,7 @@ import IntercomScreen from "../../components/Smart/Intercom/Intercom"
 import DeviceStatuses from "../../components/Smart/DeviceStatuses";
 import IPCamera from "../../components/Smart/IPCameras/IPCamera";
 import ScenesScreen from "../../components/Smart/Scenes/ScenesScreen";
+import ClimateScreen from "../../components/Smart/Climate/ClimateScreen";
 import AccountDetailsScreen from "../../components/Account/AccountDetailsScreen";
 import FamilyManagementScreen from "../../components/Account/FamilyManagementScreen";
 const Stack = createStackNavigator();
@@ -78,6 +79,13 @@ const SmartNavigator = () => {
       <Stack.Screen
         name="ScenesScreen"
         component={ScenesScreen}
+        options={{
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="ClimateScreen"
+        component={ClimateScreen}
         options={{
           headerShown: false,
         }}

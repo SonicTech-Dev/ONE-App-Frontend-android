@@ -56,7 +56,7 @@ export default StyleSheet.create({
   },
   actionButtonWrapper: {
     alignItems: 'center',
-    width: 56,
+    width: 52,
   },
   disabledActionButtonWrapper: {
     opacity: 0.42,

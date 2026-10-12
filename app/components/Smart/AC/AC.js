@@ -28,7 +28,7 @@ import {
 function DraggableSlider({
   min = 16,
   max = 32,
-  step = 0.5,
+  step = 1,
   value = min,
   onChange,
   onComplete,
@@ -137,7 +137,7 @@ function DraggableSlider({
     <View style={sliderStyles.container}>
       <View style={sliderStyles.labelRow}>
         <Text style={sliderStyles.sliderLabel}>Set Position:</Text>
-        <Text style={sliderStyles.sliderValue}>{localValue.toFixed(1)}°C</Text>
+        <Text style={sliderStyles.sliderValue}>{Math.round(localValue)}°C</Text>
       </View>
 
       <View
@@ -272,7 +272,8 @@ export default function ACModal({
         ? climateAttributes.preset_temperature
         : climateAttributes.target_temperature;
       if (typeof nextTemperature !== 'undefined') {
-        setTemp(Number(nextTemperature));
+        // Device may report 21.0 / "21.5"; controls work in whole degrees only.
+        setTemp(Math.round(Number(nextTemperature)));
       }
       if (typeof climateAttributes.hvac_mode === 'string') {
         setHVACMode(climateAttributes.hvac_mode);
@@ -280,15 +281,18 @@ export default function ACModal({
       if (typeof climateAttributes.fan_mode === 'string') {
         setFanSpeed(climateAttributes.fan_mode);
       }
-      if (Array.isArray(climateAttributes.support_hvac_mode)) {
-        const acModes = climateAttributes.support_hvac_mode.map((mode) => ({
+      // WAN reports support_hvac_mode / support_fan_mode; LAN reports hvac_modes / fan_modes.
+      const hvacModeList = climateAttributes.support_hvac_mode || climateAttributes.hvac_modes;
+      const fanModeList = climateAttributes.support_fan_mode || climateAttributes.fan_modes;
+      if (Array.isArray(hvacModeList)) {
+        const acModes = hvacModeList.map((mode) => ({
           label: prettyLabel(mode),
           value: mode,
         }));
         setSupportHVACModes(acModes);
       }
-      if (Array.isArray(climateAttributes.support_fan_mode)) {
-        const fanModes = climateAttributes.support_fan_mode.map((mode) => ({
+      if (Array.isArray(fanModeList)) {
+        const fanModes = fanModeList.map((mode) => ({
           label: prettyLabel(mode),
           value: mode,
         }));
@@ -310,12 +314,12 @@ export default function ACModal({
     if (onSetTemperature) onSetTemperature(value);
   };
   const handleMinus = () => {
-    const newTemp = Math.max(16, parseFloat((temp - 0.5).toFixed(1)));
+    const newTemp = Math.max(16, Math.round(temp) - 1);
     setTemp(newTemp);
     if (onSetTemperature) onSetTemperature(newTemp);
   };
   const handlePlus = () => {
-    const newTemp = Math.min(32, parseFloat((temp + 0.5).toFixed(1)));
+    const newTemp = Math.min(32, Math.round(temp) + 1);
     setTemp(newTemp);
     if (onSetTemperature) onSetTemperature(newTemp);
   };
@@ -392,7 +396,7 @@ export default function ACModal({
                 <View style={styles.tempArc}>
                   {/* Render temperature and unit on a single line and slightly reduce the font size */}
                   <Text style={styles.tempValue} numberOfLines={1} ellipsizeMode="clip">
-                    {`${temp.toFixed(1)}°C`}
+                    {`${Math.round(temp)}°C`}
                   </Text>
                 </View>
                 <TouchableOpacity style={styles.tempButton} onPress={handlePlus}>
@@ -404,7 +408,7 @@ export default function ACModal({
               <DraggableSlider
                 min={16}
                 max={32}
-                step={0.5}
+                step={1}
                 value={temp}
                 onChange={handleTempChange}
                 onComplete={handleTempComplete}

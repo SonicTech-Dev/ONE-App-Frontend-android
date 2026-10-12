@@ -159,6 +159,24 @@ const StatsSection = ({
           </View>
           <Text style={styles.actionButtonLabel}>Scenes</Text>
         </TouchableOpacity>
+
+        {/* Climate */}
+        <TouchableOpacity
+          style={[styles.actionButtonWrapper, actionsDisabled ? styles.disabledActionButtonWrapper : null]}
+          onPress={() => navigation.navigate('ClimateScreen', {
+            selectedOption,
+            selectedMockup,
+            selectedResidenceId,
+            familyName: selectedFamily?.family_name || '',
+          })}
+          disabled={actionsDisabled}
+          activeOpacity={0.7}
+        >
+          <View style={[styles.actionButtonIcon, { backgroundColor: '#f2ebff' }]}> 
+            <MaterialCommunityIcons name="air-conditioner" size={24} color="#6f4bd8" />
+          </View>
+          <Text style={styles.actionButtonLabel}>Climate</Text>
+        </TouchableOpacity>
       </View>
 
       <Modal
